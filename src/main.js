@@ -703,6 +703,325 @@ function createMenu() {
   Menu.setApplicationMenu(menu);
 }
 
+
+// Returns true for small auth/login popups. Intentionally not domain-based
+// so it works for any identity provider (ADFS, Okta, federated, GCC High, etc.).
+function isPopupWindow(features, disposition) {
+  if (disposition === 'new-popup') return true;
+  if (typeof features === 'string' && features.includes('popup')) return true;
+  const w = parseInt((/width=(\d+)/i.exec(features) || [])[1], 10);
+  const h = parseInt((/height=(\d+)/i.exec(features) || [])[1], 10);
+  if (!isNaN(w) && !isNaN(h) && w < 800 && h < 800) return true;
+  return false;
+}
+
+// Configures a BrowserWindow created by Electron via action:'allow'.
+// Contains all event handlers that used to live inside setWindowOpenHandler.
+function setupRDPWindow(rdpWindow, url) {
+  logger.debug('[RDP Window] Setup, ID:', rdpWindow.id);
+
+  rdpWindow.webContents.setUserAgent(appConfig.userAgent);
+
+  rdpWindow.webContents.session.cookies.get({}).then(cookies => {
+    logger.debug('[RDP Window] Cookies in session:', cookies.length);
+  }).catch(err => {
+    logger.error('[RDP Window] Error getting cookies:', err);
+  });
+
+  rdpWindow.webContents.on('will-navigate', (event, navigationUrl) => {
+    logger.debug('[New Window] Will navigate to:', navigationUrl);
+  });
+
+  rdpWindow.webContents.on('did-navigate', (event, navigationUrl) => {
+    logger.debug('[New Window] Did navigate to:', navigationUrl);
+  });
+
+  rdpWindow.webContents.on('did-navigate-in-page', (event, navigationUrl) => {
+    logger.debug('[New Window] Did navigate in page to:', navigationUrl);
+  });
+
+  rdpWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    logger.error('=== NEW WINDOW LOAD FAILED ===');
+    logger.error('URL:', validatedURL);
+    logger.error('Error Code:', errorCode);
+    logger.error('Description:', errorDescription);
+    logger.error('Is Main Frame:', isMainFrame);
+    logger.error('============================');
+    if (isMainFrame && errorCode !== -3) {
+      logger.debug('[New Window] Attempting to reload after load failure...');
+      setTimeout(() => {
+        if (!rdpWindow.isDestroyed()) { rdpWindow.reload(); }
+      }, 2000);
+    }
+  });
+
+  rdpWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    logger.debug(`[New Window Console ${level}]:`, message, `(${sourceId}:${line})`);
+  });
+
+  rdpWindow.webContents.on('did-start-loading', () => {
+    logger.debug('[New Window] Started loading:', rdpWindow.webContents.getURL());
+  });
+
+  rdpWindow.webContents.on('did-finish-load', () => {
+    const finishedUrl = rdpWindow.webContents.getURL();
+    logger.debug('[New Window] Finished loading:', finishedUrl);
+    setTimeout(() => {
+      if (!rdpWindow.isDestroyed()) {
+        rdpWindow.webContents.executeJavaScript(`
+          (function() {
+            const body = document.body;
+            if (body && body.innerHTML.trim() === '') { return true; }
+            return false;
+          })();
+        `).then(isBlank => {
+          if (isBlank) {
+            logger.warning('[New Window] Blank page detected - attempting reload...');
+            setTimeout(() => {
+              if (!rdpWindow.isDestroyed()) { rdpWindow.reload(); }
+            }, 1000);
+          }
+        }).catch(() => {});
+      }
+    }, 2000);
+  });
+
+  rdpWindow.webContents.on('dom-ready', () => {
+    logger.debug('[New Window] DOM ready:', rdpWindow.webContents.getURL());
+  });
+
+  rdpWindow.webContents.on('page-title-updated', (event, title) => {
+    logger.debug('[New Window] Title updated:', title);
+  });
+
+  // Clear stale RDP session state before loading — prevents grey screen on
+  // reconnect caused by the RDP client finding partial connection data in
+  // localStorage/IndexedDB. Cookies are excluded so the user stays authenticated.
+  // stop() cancels any auto-navigation Electron may have started so we get
+  // exactly one clean load after storage is cleared.
+  const rdpOrigin = (() => { try { return new URL(url).origin; } catch { return null; } })();
+  rdpWindow.webContents.stop();
+  const doLoad = () => rdpWindow.loadURL(url).catch(err => {
+    logger.error('[RDP Window] Error loading URL:', url, err);
+  });
+  if (rdpOrigin) {
+    rdpWindow.webContents.session.clearStorageData({
+      origin: rdpOrigin,
+      storages: ['localstorage', 'sessionstorage', 'indexdb', 'cachestorage', 'serviceworkers']
+    }).then(() => {
+      logger.debug('[RDP Window] Cleared stale storage for', rdpOrigin);
+      doLoad();
+    }).catch(() => doLoad());
+  } else {
+    doLoad();
+  }
+
+  let isClosing = false;
+  let forceCloseTimeout = null;
+
+  rdpWindow.on('close', (event) => {
+    try {
+      if (isClosing) { return; }
+      logger.debug('[New Window] Close event triggered');
+      isClosing = true;
+      try {
+        if (rdpWindow.webContents && !rdpWindow.webContents.isDestroyed()) {
+          if (rdpWindow.webContents.isDevToolsOpened()) {
+            rdpWindow.webContents.closeDevTools();
+          }
+        }
+      } catch (err) {
+        logger.error('[New Window] Error closing DevTools:', err);
+      }
+      forceCloseTimeout = setTimeout(() => {
+        if (!rdpWindow.isDestroyed()) {
+          logger.debug('[New Window] Force closing window (timeout - page prevented close)');
+          rdpWindow.destroy();
+        }
+      }, 2000);
+    } catch (err) {
+      logger.error('[New Window] Error in close handler:', err);
+      if (!rdpWindow.isDestroyed()) { rdpWindow.destroy(); }
+    }
+  });
+
+  rdpWindow.on('closed', () => {
+    try {
+      if (forceCloseTimeout) {
+        clearTimeout(forceCloseTimeout);
+        forceCloseTimeout = null;
+      }
+      windows.delete(rdpWindow);
+      logger.debug('[New Window] Closed');
+    } catch (err) {
+      logger.error('[New Window] Error in closed handler:', err);
+    }
+  });
+
+  windows.add(rdpWindow);
+
+  rdpWindow.webContents.on('uncaught-exception', (event, error) => {
+    logger.error('[New Window] Uncaught exception:', error);
+    event.preventDefault();
+  });
+
+  rdpWindow.webContents.on('unresponsive', () => {
+    logger.warning('[New Window] Window became unresponsive');
+    setTimeout(() => {
+      if (!rdpWindow.isDestroyed() && rdpWindow.webContents.isLoading()) {
+        logger.warning('[New Window] Window still unresponsive, user can force close with Ctrl+W or Ctrl+Q');
+      }
+    }, 5000);
+  });
+
+  rdpWindow.webContents.on('responsive', () => {
+    logger.debug('[New Window] Window became responsive again');
+  });
+
+  let crashCount = 0;
+  const MAX_CRASHES = 1;
+
+  rdpWindow.webContents.on('render-process-gone', (event, details) => {
+    logger.error('=== RENDER PROCESS CRASHED ===');
+    logger.error('Reason:', details.reason);
+    logger.error('Exit Code:', details.exitCode);
+    logger.error('Crash Count:', crashCount + 1);
+    logger.error('Details:', JSON.stringify(details, null, 2));
+    logger.error('URL at crash:', rdpWindow.webContents.getURL());
+    logger.error('=============================');
+    crashCount++;
+    if (details.reason === 'crashed' && crashCount < MAX_CRASHES) {
+      logger.debug(`Attempting to reload crashed page (attempt ${crashCount}/${MAX_CRASHES})...`);
+      setTimeout(() => { rdpWindow.reload(); }, 3000);
+    } else {
+      logger.error('Render process crashed. Attempting to recover...');
+      logger.debug('Window will stay open. If you see a blank screen, the RDP client crashed.');
+    }
+  });
+
+  rdpWindow.webContents.on('did-start-loading', () => {
+    rdpWindow.webContents.executeJavaScript(`
+      (function() {
+        if (typeof dragEvent === 'undefined') {
+          window.dragEvent = null;
+          Object.defineProperty(window, 'dragEvent', {
+            value: null, writable: true, configurable: true, enumerable: false
+          });
+        }
+        if (typeof SharedArrayBuffer !== 'undefined') {
+          window.SharedArrayBuffer = SharedArrayBuffer;
+        }
+        if (navigator.permissions && navigator.permissions.query) {
+          const _origQuery = navigator.permissions.query.bind(navigator.permissions);
+          navigator.permissions.query = function(descriptor) {
+            if (descriptor.name === 'camera' || descriptor.name === 'microphone' || descriptor.name === 'media') {
+              return Promise.resolve({ state: 'granted', onchange: null });
+            }
+            return _origQuery(descriptor);
+          };
+        }
+      })();
+    `).catch(() => {});
+  });
+
+  rdpWindow.webContents.once('dom-ready', () => {
+    rdpWindow.webContents.executeJavaScript(`
+      (function() {
+        if (typeof dragEvent === 'undefined') {
+          window.dragEvent = null;
+          Object.defineProperty(window, 'dragEvent', {
+            value: null, writable: true, configurable: true, enumerable: false
+          });
+        }
+        window.addEventListener('error', function(e) {
+          try { e.preventDefault(); } catch (_) {}
+          return true;
+        }, true);
+        window.addEventListener('unhandledrejection', function(e) {
+          try { e.preventDefault(); } catch (_) {}
+        });
+      })();
+    `).catch(err => {
+      logger.error('[RDP Window] Error injecting fix:', err);
+    });
+  });
+
+  rdpWindow.webContents.on('did-finish-load', () => {
+    rdpWindow.webContents.executeJavaScript(`
+      (function() {
+        if (typeof dragEvent === 'undefined') { window.dragEvent = null; }
+      })();
+    `).catch(() => {});
+  });
+
+  rdpWindow.once('ready-to-show', () => {
+    logger.debug('[New Window] Ready to show');
+    rdpWindow.show();
+    rdpWindow.setMenuBarVisibility(true);
+  });
+
+  rdpWindow.setMenuBarVisibility(true);
+
+  rdpWindow.on('enter-full-screen', () => {
+    setTimeout(() => {
+      if (!rdpWindow.isDestroyed()) { rdpWindow.setMenuBarVisibility(false); }
+    }, 100);
+  });
+
+  rdpWindow.on('leave-full-screen', () => {
+    setTimeout(() => {
+      if (!rdpWindow.isDestroyed()) { rdpWindow.setMenuBarVisibility(true); }
+    }, 100);
+  });
+
+  rdpWindow.webContents.on('before-input-event', (event, input) => {
+    const systemKeys = ['Super', 'Meta', 'Alt', 'Tab', 'Escape'];
+    const isSystemKey = systemKeys.includes(input.key) ||
+                       (input.alt && input.key === 'Tab') ||
+                       (input.meta && input.key !== 'F11' && input.key !== 'F12');
+    if (input.key === 'F11') {
+      rdpWindow.setFullScreen(!rdpWindow.isFullScreen());
+      setTimeout(() => {
+        if (!rdpWindow.isDestroyed()) {
+          rdpWindow.setMenuBarVisibility(!rdpWindow.isFullScreen());
+        }
+      }, 100);
+    } else if (input.key === 'F12') {
+      if (rdpWindow.webContents.isDevToolsOpened()) {
+        rdpWindow.webContents.closeDevTools();
+      } else {
+        rdpWindow.webContents.openDevTools();
+      }
+    } else if ((input.control || input.meta) && input.key === 'W') {
+      event.preventDefault();
+      logger.debug('[New Window] Force closing via Ctrl+W');
+      if (!rdpWindow.isDestroyed()) { rdpWindow.destroy(); }
+    } else if ((input.control || input.meta) && input.key === 'Q') {
+      event.preventDefault();
+      logger.debug('[New Window] Force closing via Ctrl+Q');
+      if (!rdpWindow.isDestroyed()) { rdpWindow.destroy(); }
+    } else if (isSystemKey && !input.control && !input.shift) {
+      return;
+    }
+  });
+
+  // Allow auth popups from within RDP windows (mid-session re-auth).
+  rdpWindow.webContents.setWindowOpenHandler(({ url: u, features: f, disposition: d }) => {
+    logger.debug('[RDP Window] Window open request:', u, d);
+    if (isPopupWindow(f, d)) {
+      return { action: 'allow', overrideBrowserWindowOptions: {
+        width: 500, height: 700, show: false,
+        webPreferences: { nodeIntegration: false, contextIsolation: true, session: session.defaultSession }
+      }};
+    }
+    return { action: 'deny' };
+  });
+  rdpWindow.webContents.on('did-create-window', (popupWin) => {
+    popupWin.setMenuBarVisibility(false);
+    popupWin.once('ready-to-show', () => popupWin.show());
+  });
+}
+
 function createWindow(isFullscreen = false) {
   // Create the browser window
   mainWindow = new BrowserWindow({
@@ -740,488 +1059,61 @@ function createWindow(isFullscreen = false) {
   // This ensures they're active for all windows from the start
 
   // Set up window open handler for new windows (remote desktop, etc.)
-  mainWindow.webContents.setWindowOpenHandler(({ url, frameName, features }) => {
-    logger.debug('=== NEW WINDOW REQUEST ===');
-    logger.debug('URL:', url);
-    logger.debug('Frame Name:', frameName);
-    logger.debug('Features:', features);
-    logger.debug('========================');
-    
-    // Create a new window for the remote desktop or other pages
-    // Use the same session as the main window to share cookies/auth
-    // This is critical for authentication to work across windows
-    const newWindow = new BrowserWindow({
-      width: 1920,
-      height: 1080,
-      fullscreen: false, // New windows open in windowed mode (can toggle with F11)
-      fullscreenable: true, // Allow fullscreen
-      backgroundColor: '#1e1e1e', // Dark background to avoid white flash
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        webSecurity: true,
-        permissions: ['camera', 'microphone', 'notifications'],
-        // Use the same session as the main window - this shares cookies/auth!
-        session: session.defaultSession,
-        // DevTools disabled by default - can be toggled via menu (Ctrl+Shift+I)
-        devTools: false,
-        // Additional stability options
-        backgroundThrottling: false,
-        offscreen: false,
-        // Enable browser-like features needed for RDP
-        enableWebSQL: false,
-        // Enable features that browsers have by default
-        enableBlinkFeatures: 'SharedArrayBuffer',
-        // Disable sandbox for better compatibility with RDP client
-        sandbox: false,
-        // Additional options that might help
-        v8CacheOptions: 'code'
-      },
-      show: false
-    });
-
-    logger.debug('New window created, ID:', newWindow.id);
-
-    // Set User-Agent on webContents as well
-    newWindow.webContents.setUserAgent(appConfig.userAgent);
-    logger.debug('User-Agent set on new window:', appConfig.userAgent);
-    
-    // Note: Permission handlers are already set up globally on session.defaultSession
-    // Since this window uses the same session, it will automatically use those handlers
-    
-    // Ensure cookies are shared - verify session is the same
-    const newSession = newWindow.webContents.session;
-    logger.debug('New window session ID:', newSession.id);
-    logger.debug('Default session ID:', session.defaultSession.id);
-    logger.debug('Sessions match:', newSession === session.defaultSession);
-    
-    // Ensure cookies are enabled and shared
-    newSession.cookies.get({}).then(cookies => {
-      logger.debug('Cookies in new window session:', cookies.length);
-    }).catch(err => {
-      logger.error('Error getting cookies:', err);
-    });
-
-    // Track all navigation events
-    newWindow.webContents.on('will-navigate', (event, navigationUrl) => {
-      logger.debug('[New Window] Will navigate to:', navigationUrl);
-    });
-
-    newWindow.webContents.on('did-navigate', (event, navigationUrl) => {
-      logger.debug('[New Window] Did navigate to:', navigationUrl);
-    });
-
-    newWindow.webContents.on('did-navigate-in-page', (event, navigationUrl) => {
-      logger.debug('[New Window] Did navigate in page to:', navigationUrl);
-    });
-
-    // Handle navigation errors
-    newWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-      logger.error('=== NEW WINDOW LOAD FAILED ===');
-      logger.error('URL:', validatedURL);
-      logger.error('Error Code:', errorCode);
-      logger.error('Description:', errorDescription);
-      logger.error('Is Main Frame:', isMainFrame);
-      logger.error('============================');
-      
-      // If it's a main frame failure, try to reload after a delay
-      if (isMainFrame && errorCode !== -3) { // -3 is ERR_ABORTED, don't reload on that
-        logger.debug('[New Window] Attempting to reload after load failure...');
-        setTimeout(() => {
-          if (!newWindow.isDestroyed()) {
-            newWindow.reload();
-          }
-        }, 2000);
-      }
-    });
-
-    // Handle console messages for debugging
-    newWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-      logger.debug(`[New Window Console ${level}]:`, message, `(${sourceId}:${line})`);
-    });
-
-    // Debug: Log when page starts loading
-    newWindow.webContents.on('did-start-loading', () => {
-      logger.debug('[New Window] Started loading:', newWindow.webContents.getURL());
-    });
-
-    // Debug: Log when page finishes loading
-    newWindow.webContents.on('did-finish-load', () => {
-      const url = newWindow.webContents.getURL();
-      logger.debug('[New Window] Finished loading:', url);
-      
-      // Check if page is blank (no content loaded)
-      setTimeout(() => {
-        if (!newWindow.isDestroyed()) {
-          newWindow.webContents.executeJavaScript(`
-            (function() {
-              const body = document.body;
-              if (body && body.innerHTML.trim() === '') {
-                logger.warning('[New Window] Page appears to be blank - no content detected');
-                return true;
-              }
-              return false;
-            })();
-          `).then(isBlank => {
-            if (isBlank) {
-              logger.warning('[New Window] Blank page detected - attempting reload...');
-              setTimeout(() => {
-                if (!newWindow.isDestroyed()) {
-                  newWindow.reload();
-                }
-              }, 1000);
-            }
-          }).catch(() => {});
+  // action:'allow' ensures window.open() returns a valid reference in the renderer.
+  // action:'deny' returns null, which the Windows App treats as "popup blocked",
+  // aborting auth flows that redirect to any third-party identity provider.
+  mainWindow.webContents.setWindowOpenHandler(({ url, frameName, features, disposition }) => {
+    logger.debug('=== NEW WINDOW REQUEST ===', url, '|', disposition);
+    const popup = isPopupWindow(features, disposition);
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: popup ? {
+        width: 500,
+        height: 700,
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          webSecurity: true,
+          session: session.defaultSession
         }
-      }, 2000);
-    });
-
-    // Debug: Log DOM ready
-    newWindow.webContents.on('dom-ready', () => {
-      logger.debug('[New Window] DOM ready:', newWindow.webContents.getURL());
-    });
-
-    // Debug: Log when page title changes
-    newWindow.webContents.on('page-title-updated', (event, title) => {
-      logger.debug('[New Window] Title updated:', title);
-    });
-
-    // Monitor network requests
-    newWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
-      if (details.resourceType === 'mainFrame' || details.resourceType === 'subFrame') {
-        logger.debug('[New Window] Request:', details.method, details.url);
-      }
-      callback({});
-    });
-
-    // Copy authentication cookies from main window before loading
-    // This ensures the new window has the same auth state
-    session.defaultSession.cookies.get({ domain: '.microsoft.com' }).then(cookies => {
-      logger.debug(`Copying ${cookies.length} cookies from main session to new window`);
-      // Cookies are already shared via same session, but this ensures they're available
-      return Promise.resolve();
-    }).catch(err => {
-      logger.error('Error getting cookies:', err);
-    });
-
-    // Load the URL in the new window
-    logger.debug('Loading URL in new window:', url);
-    newWindow.loadURL(url).catch(err => {
-      logger.error('=== ERROR LOADING URL ===');
-      logger.error('URL:', url);
-      logger.error('Error:', err);
-      logger.error('========================');
-    });
-
-    // Handle window close - allow closing but clean up first
-    let isClosing = false;
-    let forceCloseTimeout = null;
-    
-    newWindow.on('close', (event) => {
-      try {
-        if (isClosing) {
-          // Already closing, allow it
-          return;
-        }
-        
-        logger.debug('[New Window] Close event triggered');
-        isClosing = true;
-        
-        // Clean up DevTools if open
-        try {
-          if (newWindow.webContents && !newWindow.webContents.isDestroyed()) {
-            if (newWindow.webContents.isDevToolsOpened()) {
-              newWindow.webContents.closeDevTools();
-            }
-          }
-        } catch (err) {
-          logger.error('[New Window] Error closing DevTools:', err);
-        }
-        
-        // If the window doesn't close within 2 seconds, force close it
-        // This handles cases where the page prevents closing
-        forceCloseTimeout = setTimeout(() => {
-          if (!newWindow.isDestroyed()) {
-            logger.debug('[New Window] Force closing window (timeout - page prevented close)');
-            newWindow.destroy();
-          }
-        }, 2000); // 2 second timeout
-        
-        // Don't prevent close - allow the window to close normally
-        // If the page prevents it, the timeout will force close
-      } catch (err) {
-        logger.error('[New Window] Error in close handler:', err);
-        // On error, force close
-        if (!newWindow.isDestroyed()) {
-          newWindow.destroy();
+      } : {
+        width: 1920,
+        height: 1080,
+        fullscreen: false,
+        fullscreenable: true,
+        backgroundColor: '#1e1e1e',
+        show: false,
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+          webSecurity: true,
+          permissions: ['camera', 'microphone', 'notifications'],
+          session: session.defaultSession,
+          devTools: true,
+          backgroundThrottling: false,
+          offscreen: false,
+          enableWebSQL: false,
+          enableBlinkFeatures: 'SharedArrayBuffer',
+          sandbox: false,
+          v8CacheOptions: 'none'
         }
       }
-    });
-
-    // Handle window closed
-    newWindow.on('closed', () => {
-      try {
-        // Clear the force-close timeout if window closed normally
-        if (forceCloseTimeout) {
-          clearTimeout(forceCloseTimeout);
-          forceCloseTimeout = null;
-        }
-        windows.delete(newWindow);
-        logger.debug('[New Window] Closed');
-      } catch (err) {
-        logger.error('[New Window] Error in closed handler:', err);
-      }
-    });
-
-    windows.add(newWindow);
-
-    // Handle JavaScript errors
-    newWindow.webContents.on('uncaught-exception', (event, error) => {
-      logger.error('[New Window] Uncaught exception:', error);
-      // Prevent the error from crashing the app
-      event.preventDefault();
-    });
-    
-    // Handle unhandled promise rejections in renderer
-    newWindow.webContents.on('unresponsive', () => {
-      logger.warning('[New Window] Window became unresponsive');
-      // If window is unresponsive for more than 5 seconds, offer to force close
-      setTimeout(() => {
-        if (!newWindow.isDestroyed() && newWindow.webContents.isLoading()) {
-          logger.warning('[New Window] Window still unresponsive, user can force close with Ctrl+W or Ctrl+Q');
-        }
-      }, 5000);
-    });
-    
-    newWindow.webContents.on('responsive', () => {
-      logger.debug('[New Window] Window became responsive again');
-    });
-
-    // Handle renderer process crashes
-    let crashCount = 0;
-    const MAX_CRASHES = 1; // Only reload once - if it crashes again, it's likely the same issue
-    
-    newWindow.webContents.on('render-process-gone', (event, details) => {
-      logger.error('=== RENDER PROCESS CRASHED ===');
-      logger.error('Reason:', details.reason);
-      logger.error('Exit Code:', details.exitCode);
-      logger.error('Crash Count:', crashCount + 1);
-      logger.error('Details:', JSON.stringify(details, null, 2));
-      logger.error('URL at crash:', newWindow.webContents.getURL());
-      logger.error('=============================');
-      
-      crashCount++;
-      
-      // Only try to reload once - if it crashes again, it's likely a persistent issue
-      if (details.reason === 'crashed' && crashCount < MAX_CRASHES) {
-        logger.debug(`Attempting to reload crashed page (attempt ${crashCount}/${MAX_CRASHES})...`);
-        // Wait a bit longer before reload to let things settle
-        setTimeout(() => {
-          newWindow.reload();
-        }, 3000);
-      } else {
-        logger.error('Render process crashed. Attempting to recover...');
-        logger.error('The window will remain open. Trying to reload with different settings...');
-        
-        // Don't close - try to keep the window and see if we can recover
-        // The crash might be recoverable if we wait longer
-        logger.debug('Window will stay open. If you see a blank screen, the RDP client crashed.');
-      }
-    });
-
-    // Inject code VERY EARLY - as soon as navigation starts
-    newWindow.webContents.on('did-start-loading', () => {
-      // Inject fixes immediately when page starts loading
-      newWindow.webContents.executeJavaScript(`
-        (function() {
-          // Fix dragEvent error IMMEDIATELY - before any scripts run
-          if (typeof dragEvent === 'undefined') {
-            window.dragEvent = null;
-            Object.defineProperty(window, 'dragEvent', {
-              value: null,
-              writable: true,
-              configurable: true,
-              enumerable: false
-            });
-          }
-          
-          // Try to prevent crashes by wrapping potentially problematic APIs
-          // This might help with WebRTC/WebAssembly issues
-          if (typeof SharedArrayBuffer !== 'undefined') {
-            const originalSAB = SharedArrayBuffer;
-            // Keep SharedArrayBuffer but add error handling
-            window.SharedArrayBuffer = originalSAB;
-          }
-          
-          // Ensure permissions API returns granted for camera/microphone
-          if (navigator.permissions && navigator.permissions.query) {
-            const originalQuery = navigator.permissions.query.bind(navigator.permissions);
-            navigator.permissions.query = function(descriptor) {
-              logger.debug('[Permissions API] Query:', descriptor.name);
-              if (descriptor.name === 'camera' || descriptor.name === 'microphone' || descriptor.name === 'media') {
-                logger.debug('[Permissions API] Returning granted for:', descriptor.name);
-                return Promise.resolve({ state: 'granted', onchange: null });
-              }
-              return originalQuery(descriptor);
-            };
-          }
-          
-          // Also ensure getUserMedia works by pre-granting permissions
-          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            logger.debug('[MediaDevices] getUserMedia API available');
-          }
-        })();
-      `).catch(() => {});
-    });
-
-    // Inject more fixes when DOM is ready
-    newWindow.webContents.once('dom-ready', () => {
-      // Inject fixes immediately when DOM is ready
-      newWindow.webContents.executeJavaScript(`
-        (function() {
-          // Fix dragEvent error by providing a fallback - do this FIRST
-          if (typeof dragEvent === 'undefined') {
-            window.dragEvent = null;
-            Object.defineProperty(window, 'dragEvent', {
-              value: null,
-              writable: true,
-              configurable: true,
-              enumerable: false
-            });
-          }
-          
-          // Allow window.close() to work - don't override it
-          // The page should be able to close itself if needed
-          // We'll handle cleanup in the Electron close handler
-          
-          // Try to catch and handle errors that might cause crashes
-          window.addEventListener('error', function(e) {
-            logger.debug('Global error caught:', e.message, e.filename, e.lineno);
-            try {
-              e.preventDefault();
-            } catch (err) {
-              logger.error('Error preventing default:', err);
-            }
-            return true;
-          }, true);
-          
-          window.addEventListener('unhandledrejection', function(e) {
-            logger.debug('Unhandled promise rejection:', e.reason);
-            try {
-              e.preventDefault();
-            } catch (err) {
-              logger.error('Error preventing default in unhandledrejection:', err);
-            }
-          });
-          
-          // Handle window beforeunload - don't prevent closing
-          window.addEventListener('beforeunload', function(e) {
-            try {
-              logger.debug('Window beforeunload event');
-              // Don't prevent the unload - allow the window to close
-              // The page should be able to close normally
-            } catch (err) {
-              logger.error('Error in beforeunload handler:', err);
-            }
-          });
-        })();
-      `).catch(err => {
-        logger.error('Error injecting fix:', err);
-      });
-    });
-    
-    // Also inject on did-finish-load as backup
-    newWindow.webContents.on('did-finish-load', () => {
-      newWindow.webContents.executeJavaScript(`
-        (function() {
-          if (typeof dragEvent === 'undefined') {
-            window.dragEvent = null;
-          }
-        })();
-      `).catch(() => {});
-    });
-
-    // Show window when ready (in windowed mode - can toggle with F11)
-    newWindow.once('ready-to-show', () => {
-      logger.debug('[New Window] Ready to show');
-      newWindow.show();
-      // Ensure menu bar is always visible
-      newWindow.setMenuBarVisibility(true);
-      // Don't force fullscreen - let user toggle with F11 if needed
-      // DevTools disabled by default - can be toggled via menu
-    });
-
-    // Handle fullscreen toggle for new windows (F11)
-    // Menu bar visible by default, hidden in fullscreen
-    newWindow.setMenuBarVisibility(true);
-    
-    // Hide menu bar when entering fullscreen, show when leaving
-    newWindow.on('enter-full-screen', () => {
-      setTimeout(() => {
-        if (!newWindow.isDestroyed()) {
-          newWindow.setMenuBarVisibility(false);
-        }
-      }, 100);
-    });
-    
-    newWindow.on('leave-full-screen', () => {
-      setTimeout(() => {
-        if (!newWindow.isDestroyed()) {
-          newWindow.setMenuBarVisibility(true);
-        }
-      }, 100);
-    });
-    
-    newWindow.webContents.on('before-input-event', (event, input) => {
-      // Allow system shortcuts to pass through (Windows key, Alt+Tab, etc.)
-      // These are system-level shortcuts that should work even in fullscreen
-      const systemKeys = ['Super', 'Meta', 'Alt', 'Tab', 'Escape'];
-      const isSystemKey = systemKeys.includes(input.key) || 
-                         (input.alt && input.key === 'Tab') ||
-                         (input.meta && input.key !== 'F11' && input.key !== 'F12');
-      
-      // Only handle our specific shortcuts, let system shortcuts pass through
-      if (input.key === 'F11') {
-        const isFullscreen = newWindow.isFullScreen();
-        newWindow.setFullScreen(!isFullscreen);
-        // Update menu bar visibility after toggling fullscreen
-        setTimeout(() => {
-          if (!newWindow.isDestroyed()) {
-            newWindow.setMenuBarVisibility(!newWindow.isFullScreen());
-          }
-        }, 100);
-      } else if (input.key === 'F12') {
-        // Toggle DevTools with F12 (like Edge)
-        if (newWindow.webContents.isDevToolsOpened()) {
-          newWindow.webContents.closeDevTools();
-        } else {
-          newWindow.webContents.openDevTools();
-        }
-      } else if ((input.control || input.meta) && input.key === 'W') {
-        // Ctrl+W or Cmd+W - Force close the window
-        event.preventDefault();
-        logger.debug('[New Window] Force closing via Ctrl+W');
-        if (!newWindow.isDestroyed()) {
-          newWindow.destroy();
-        }
-      } else if ((input.control || input.meta) && input.key === 'Q') {
-        // Ctrl+Q or Cmd+Q - Force close the window
-        event.preventDefault();
-        logger.debug('[New Window] Force closing via Ctrl+Q');
-        if (!newWindow.isDestroyed()) {
-          newWindow.destroy();
-        }
-      } else if (isSystemKey && !input.control && !input.shift) {
-        // Allow system shortcuts to pass through to the OS
-        // Don't prevent default for system keys
-        return;
-      }
-    });
-
-    // Return deny since we're handling the window ourselves
-    // This prevents Electron from creating a duplicate window
-    return { action: 'deny' };
+    };
   });
+
+  mainWindow.webContents.on('did-create-window', (win, details) => {
+    logger.debug('[did-create-window]', details.url, '|', details.disposition);
+    if (isPopupWindow(details.features, details.disposition)) {
+      win.setMenuBarVisibility(false);
+      win.once('ready-to-show', () => win.show());
+      windows.add(win);
+      win.on('closed', () => windows.delete(win));
+    } else {
+      setupRDPWindow(win, details.url);
+    }
+  });
+
 
   // Load the configured connection URL
   mainWindow.loadURL(appConfig.connectionUrl);
