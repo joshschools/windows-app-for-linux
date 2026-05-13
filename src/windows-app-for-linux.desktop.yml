@@ -20,34 +20,35 @@ modules:
     buildsystem: simple
     build-commands:
       - |
-        # Install Node.js from NodeSource
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-        apt-get install -y nodejs
-        
-        # Install dependencies
-        npm install --production
-        
-        # Create launcher script
+        # Install Electron binary and supporting files
+        install -d /app/lib/windows-app-for-linux
+        cp -a node_modules/electron/dist/. /app/lib/windows-app-for-linux/
+        chmod +x /app/lib/windows-app-for-linux/electron
+
+        # Set up app source in Electron resources directory
+        install -d /app/lib/windows-app-for-linux/resources/app/src
+        install -Dm644 package.json /app/lib/windows-app-for-linux/resources/app/package.json
+        install -Dm644 src/main.js /app/lib/windows-app-for-linux/resources/app/src/main.js
+
+        # Create launcher script (--no-sandbox required inside Flatpak)
         mkdir -p /app/bin
-        cat > /app/bin/windows-app-for-linux << 'EOF'
-        #!/bin/sh
-        cd /app
-        exec /usr/bin/node /app/node_modules/electron/cli.js /app/main.js "$@"
-        EOF
+        printf '#!/bin/sh\nexec /app/lib/windows-app-for-linux/electron --no-sandbox "$@"\n' \
+          > /app/bin/windows-app-for-linux
         chmod +x /app/bin/windows-app-for-linux
-        
-        # Copy application files
-        install -Dm644 main.js /app/main.js
-        install -Dm644 package.json /app/package.json
-        cp -r node_modules /app/
-        
-        # Install desktop file
-        install -Dm644 windows-app-for-linux.desktop /app/share/applications/windows-app-for-linux.desktop
-        
-        # Install icon if it exists
-        if [ -f windows-app-for-linux.desktop.png ]; then
-          install -Dm644 windows-app-for-linux.desktop.png /app/share/icons/hicolor/512x512/apps/windows-app-for-linux.desktop.png
-        fi
+
+        # Install desktop file named after the app ID
+        install -Dm644 src/windows-app-for-linux.desktop \
+          /app/share/applications/com.microsoft.WindowsAppForLinux.desktop
+        sed -i 's|^Exec=.*|Exec=windows-app-for-linux|' \
+          /app/share/applications/com.microsoft.WindowsAppForLinux.desktop
+        sed -i 's|^Icon=.*|Icon=com.microsoft.WindowsAppForLinux|' \
+          /app/share/applications/com.microsoft.WindowsAppForLinux.desktop
+
+        # Install icons
+        install -Dm644 src/windows-app-for-linux.desktop.512x512.png \
+          /app/share/icons/hicolor/512x512/apps/com.microsoft.WindowsAppForLinux.png
+        install -Dm644 src/windows-app-for-linux.desktop.256x256.png \
+          /app/share/icons/hicolor/256x256/apps/com.microsoft.WindowsAppForLinux.png
     sources:
       - type: dir
-        path: .
+        path: ..

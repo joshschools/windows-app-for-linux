@@ -22,6 +22,26 @@ const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 // Default connection address
 const DEFAULT_CONNECTION_URL = 'https://windows.cloud.microsoft/#/devices';
 
+// Known cloud environment endpoints
+const CLOUD_ENVIRONMENTS = {
+  commercial: {
+    label: 'Commercial',
+    url: 'https://windows.cloud.microsoft/#/devices'
+  },
+  gcchigh: {
+    label: 'GCC High',
+    url: 'https://rdweb.wvd.azure.us/arm/webclient/index.html'
+  },
+  dod: {
+    label: 'DoD',
+    url: 'https://rdweb.wvd.microsoft.us/arm/webclient/index.html'
+  },
+  custom: {
+    label: 'Custom',
+    url: null
+  }
+};
+
 // Log levels
 const LOG_LEVELS = {
   ERROR: 0,
@@ -32,7 +52,8 @@ const LOG_LEVELS = {
 
 // Application configuration
 let appConfig = {
-  logLevel: LOG_LEVELS.INFO, // Default to INFO level
+  logLevel: LOG_LEVELS.INFO,
+  cloudEnvironment: 'commercial',
   connectionUrl: DEFAULT_CONNECTION_URL,
   userAgent: DEFAULT_USER_AGENT,
   windowWidth: 1024,
@@ -255,6 +276,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   });
 
+  const cloudEnvsJson = JSON.stringify(CLOUD_ENVIRONMENTS);
+  const currentEnv = appConfig.cloudEnvironment || 'commercial';
+  const currentUrl = appConfig.connectionUrl.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const currentUserAgent = appConfig.userAgent.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
   const html = `
 <!DOCTYPE html>
 <html>
@@ -285,13 +311,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
       font-weight: 500;
       color: #555;
     }
-    input[type="text"], input[type="url"] {
+    select, input[type="text"], input[type="url"] {
       width: 100%;
       padding: 8px;
       border: 1px solid #ddd;
       border-radius: 3px;
       font-size: 14px;
       box-sizing: border-box;
+    }
+    input[type="url"], input[type="text"].mono {
       font-family: monospace;
     }
     input#userAgent {
@@ -316,47 +344,47 @@ contextBridge.exposeInMainWorld('electronAPI', {
       font-size: 14px;
       margin-right: 10px;
     }
-    button:hover {
-      background: #106ebe;
-    }
-    button.danger {
-      background: #d13438;
-    }
-    button.danger:hover {
-      background: #a4262c;
-    }
-    .button-group {
-      margin-top: 20px;
-      text-align: right;
-    }
-    .description {
-      font-size: 12px;
-      color: #666;
-      margin-top: 5px;
-    }
+    button:hover { background: #106ebe; }
+    button.danger { background: #d13438; }
+    button.danger:hover { background: #a4262c; }
+    .button-group { margin-top: 20px; text-align: right; }
+    .description { font-size: 12px; color: #666; margin-top: 5px; }
+    #connectionUrl:disabled { background: #f0f0f0; color: #888; cursor: not-allowed; }
   </style>
 </head>
 <body>
   <h2>Settings</h2>
-  
+
   <div class="setting-group">
-    <label for="connectionUrl">Default Connection Address:</label>
-    <input type="url" id="connectionUrl" value="${appConfig.connectionUrl.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" placeholder="https://windows.cloud.microsoft/#/devices">
-    <div class="description">The URL to load when the application starts.</div>
-    <div class="warning">
+    <label for="cloudEnvironment">Cloud Environment:</label>
+    <select id="cloudEnvironment" onchange="onEnvChange()">
+      <option value="commercial">Commercial</option>
+      <option value="gcchigh">GCC High</option>
+      <option value="dod">DoD</option>
+      <option value="custom">Custom</option>
+    </select>
+    <div class="description">Selects the Microsoft cloud endpoint. Choose Custom to enter your own URL.</div>
+  </div>
+
+  <div class="setting-group">
+    <label for="connectionUrl">Connection URL:</label>
+    <input type="url" id="connectionUrl" class="mono"
+      value="${currentUrl}"
+      placeholder="https://windows.cloud.microsoft/#/devices">
+    <div class="description">The URL loaded on startup. Automatically set by the environment selector above.</div>
+    <div class="warning" id="customWarning" style="display:none;">
       <strong>Warning:</strong> Changing this address may cause the application to not work correctly. Only modify if you know what you're doing.
     </div>
   </div>
-  
+
   <div class="setting-group">
     <label for="userAgent">User-Agent String:</label>
-    <input type="text" id="userAgent" value="${appConfig.userAgent.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...">
-    <div class="description">The User-Agent string sent with HTTP requests. Changing this may affect how websites identify your browser.</div>
-    <div class="warning">
-      <strong>Warning:</strong> Changing the User-Agent may cause websites to behave differently or not work correctly. Only modify if you know what you're doing.
-    </div>
+    <input type="text" id="userAgent" class="mono"
+      value="${currentUserAgent}"
+      placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...">
+    <div class="description">Sent with HTTP requests. Leave as-is unless you have a specific reason to change it.</div>
   </div>
-  
+
   <div class="setting-group">
     <label>Default Window Size:</label>
     <div style="display: flex; gap: 10px; align-items: center;">
@@ -369,56 +397,62 @@ contextBridge.exposeInMainWorld('electronAPI', {
         <input type="number" id="windowHeight" value="${appConfig.windowHeight}" min="300" max="2160" style="width: 100%;">
       </div>
     </div>
-    <div class="description">The default size of the main window when the application starts. Changes will apply to new windows.</div>
+    <div class="description">Default size for new windows.</div>
   </div>
-  
+
   <div class="setting-group">
     <label>Data Management:</label>
     <button class="danger" onclick="clearCache()">Clear Cookies and Cache</button>
-    <div class="description">This will clear all stored cookies, cache, and local storage. You will need to log in again.</div>
+    <div class="description">Clears all stored cookies, cache, and local storage. You will need to log in again.</div>
   </div>
-  
+
   <div class="button-group">
     <button onclick="saveSettings()">Save</button>
-    <button onclick="cancelSettings()">Cancel</button>
+    <button onclick="window.close()">Cancel</button>
   </div>
-  
+
   <script>
-    // Use the exposed electronAPI from preload script instead of require('electron')
-    // electronAPI is exposed via contextBridge in the preload script
-    
+    const ENVS = ${cloudEnvsJson};
+    const urlField = document.getElementById('connectionUrl');
+    const envSelect = document.getElementById('cloudEnvironment');
+    const customWarning = document.getElementById('customWarning');
+
+    // Initialise to current saved state
+    envSelect.value = '${currentEnv}';
+    updateUrlField('${currentEnv}');
+
+    function onEnvChange() {
+      updateUrlField(envSelect.value);
+    }
+
+    function updateUrlField(env) {
+      const isCustom = env === 'custom';
+      urlField.disabled = !isCustom;
+      customWarning.style.display = isCustom ? 'block' : 'none';
+      if (!isCustom && ENVS[env] && ENVS[env].url) {
+        urlField.value = ENVS[env].url;
+      }
+    }
+
     function saveSettings() {
-      const connectionUrl = document.getElementById('connectionUrl').value;
-      const userAgent = document.getElementById('userAgent').value;
+      const cloudEnvironment = envSelect.value;
+      const connectionUrl = urlField.value.trim();
+      const userAgent = document.getElementById('userAgent').value.trim();
       const windowWidth = parseInt(document.getElementById('windowWidth').value);
       const windowHeight = parseInt(document.getElementById('windowHeight').value);
-      const settings = {};
-      if (connectionUrl && connectionUrl.trim()) {
-        settings.connectionUrl = connectionUrl.trim();
-      }
-      if (userAgent && userAgent.trim()) {
-        settings.userAgent = userAgent.trim();
-      }
-      if (windowWidth && windowWidth >= 400 && windowWidth <= 3840) {
-        settings.windowWidth = windowWidth;
-      }
-      if (windowHeight && windowHeight >= 300 && windowHeight <= 2160) {
-        settings.windowHeight = windowHeight;
-      }
-      if (Object.keys(settings).length > 0) {
-        // Use the exposed API from preload script
-        window.electronAPI.send('save-settings', settings);
-      }
+
+      const settings = { cloudEnvironment };
+      if (connectionUrl) settings.connectionUrl = connectionUrl;
+      if (userAgent) settings.userAgent = userAgent;
+      if (windowWidth >= 400 && windowWidth <= 3840) settings.windowWidth = windowWidth;
+      if (windowHeight >= 300 && windowHeight <= 2160) settings.windowHeight = windowHeight;
+
+      window.electronAPI.send('save-settings', settings);
       window.close();
     }
-    
-    function cancelSettings() {
-      window.close();
-    }
-    
+
     async function clearCache() {
       if (confirm('Are you sure you want to clear all cookies and cache? You will need to log in again.')) {
-        // Use the exposed API from preload script
         window.electronAPI.send('clear-cache');
         alert('Cookies and cache cleared. The application will reload.');
         window.close();
@@ -433,6 +467,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Handle IPC messages from settings window
   const saveHandler = (event, settings) => {
+    if (settings.cloudEnvironment) {
+      appConfig.cloudEnvironment = settings.cloudEnvironment;
+    }
     if (settings.connectionUrl) {
       appConfig.connectionUrl = settings.connectionUrl;
     }
