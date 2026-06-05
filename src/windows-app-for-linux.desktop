@@ -2,7 +2,7 @@
 Name=Windows App for Linux
 Comment=Unofficial client for Windows App - Access Azure Virtual Desktops on Linux
 Exec=windows-app-for-linux
-Icon=windows-app-for-linux.desktop.png
+Icon=io.github.joshschools.WindowsAppForLinux
 Type=Application
 Categories=Network;WebBrowser;RemoteAccess;
 StartupNotify=true

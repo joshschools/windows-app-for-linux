@@ -6,6 +6,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron src/main.js",
+    "test": "node --test",
     "build": "electron-builder",
     "build:snap": "./scripts/build-snap.sh",
     "build:flatpak": "flatpak-builder build/flatpak-build src/windows-app-for-linux.desktop.yml --force-clean",

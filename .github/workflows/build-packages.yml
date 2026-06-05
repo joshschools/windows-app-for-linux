@@ -12,17 +12,39 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check main process
+        run: node --check src/main.js
+
+      - name: Run tests
+        run: npm test
+
   build-snap:
     name: Build Snap Package
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Install snapcraft
-        uses: snapcore/action-setup@v1
-        with:
-          snapcraft-channel: 'latest/stable'
+        run: sudo snap install snapcraft --classic
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -69,6 +91,7 @@ jobs:
 
   build-flatpak:
     name: Build Flatpak Package
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -82,6 +105,10 @@ jobs:
       - name: Add Flathub remote
         run: |
           flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Install Flatpak runtime and SDK
+        run: |
+          flatpak install -y --user flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -108,7 +135,7 @@ jobs:
           flatpak build-bundle \
             build/flatpak-repo \
             build/windows-app-for-linux.flatpak \
-            com.microsoft.WindowsAppForLinux \
+            io.github.joshschools.WindowsAppForLinux \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Upload Flatpak artifact
