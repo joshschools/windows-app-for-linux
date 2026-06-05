@@ -145,11 +145,39 @@ jobs:
           path: build/*.flatpak
           retention-days: 30
 
+  build-appimage:
+    name: Build AppImage Package
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build AppImage package
+        run: npx electron-builder --linux AppImage --publish never
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-package
+          path: build/appimage/*.AppImage
+          retention-days: 30
+
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [build-snap, build-flatpak]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.build-snap.result == 'success' && needs.build-flatpak.result == 'success'
+    needs: [build-snap, build-flatpak, build-appimage]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build-snap.result == 'success' && needs.build-flatpak.result == 'success' && needs.build-appimage.result == 'success'
     permissions:
       contents: write
     steps:
@@ -198,6 +226,13 @@ jobs:
           name: flatpak-package
           path: release-artifacts/
 
+      - name: Download AppImage artifact
+        if: steps.verify_branch.outputs.is_main == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: appimage-package
+          path: release-artifacts/
+
       - name: Create Release
         if: steps.verify_branch.outputs.is_main == 'true'
         uses: softprops/action-gh-release@v1
@@ -217,19 +252,26 @@ jobs:
             ```bash
             flatpak install windows-app-for-linux.flatpak
             ```
-            
+
+            **AppImage:**
+            ```bash
+            chmod +x Windows*App*for*Linux*.AppImage
+            ./Windows*App*for*Linux*.AppImage
+            ```
+
             ### Changes
             See the [full changelog](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.ref }}) for details.
           files: |
             release-artifacts/*.snap
             release-artifacts/*.flatpak
+            release-artifacts/*.AppImage
           draft: false
           prerelease: false
 
   build-summary:
     name: Build Summary
     runs-on: ubuntu-latest
-    needs: [build-snap, build-flatpak]
+    needs: [build-snap, build-flatpak, build-appimage]
     if: always()
     steps:
       - name: Download Snap artifact
@@ -243,6 +285,12 @@ jobs:
         with:
           name: flatpak-package
           path: artifacts/flatpak
+
+      - name: Download AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: appimage-package
+          path: artifacts/appimage
 
       - name: Display build summary
         run: |
@@ -262,5 +310,13 @@ jobs:
             echo "✅ Flatpak package built successfully" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Flatpak package build failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### AppImage Package" >> $GITHUB_STEP_SUMMARY
+          if [ -f artifacts/appimage/*.AppImage ]; then
+            ls -lh artifacts/appimage/*.AppImage >> $GITHUB_STEP_SUMMARY
+            echo "✅ AppImage package built successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ AppImage package build failed" >> $GITHUB_STEP_SUMMARY
           fi
 
