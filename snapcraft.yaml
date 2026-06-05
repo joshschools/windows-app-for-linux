@@ -1,7 +1,7 @@
 name: windows-app-for-linux
 title: Windows App for Linux
 license: MIT
-version: '1.0.0'
+version: '1.0.2'
 summary: Unofficial client for Windows App - Access Azure Virtual Desktops on Linux
 description: |
   An unofficial standalone Electron application that provides native Linux access to 
