@@ -32,9 +32,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: |
-          cd src
-          npm ci
+        run: npm ci
 
       - name: Build Snap package
         run: |
@@ -93,9 +91,7 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: |
-          cd src
-          npm ci
+        run: npm ci
 
       - name: Build Flatpak package
         run: |

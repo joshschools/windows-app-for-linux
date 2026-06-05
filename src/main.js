@@ -22,6 +22,30 @@ const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 // Default connection address
 const DEFAULT_CONNECTION_URL = 'https://windows.cloud.microsoft/#/devices';
 
+// Host suffixes trusted to receive sensitive permissions (camera, microphone,
+// geolocation, etc.). Permission requests from any other origin are denied so a
+// redirected or compromised page cannot silently obtain camera/mic access.
+const TRUSTED_HOST_SUFFIXES = [
+  'microsoft.com',
+  'microsoftonline.com',
+  'cloud.microsoft',
+  'windows.net',
+  'azure.com'
+];
+
+// Returns true if the given origin/URL belongs to a trusted Microsoft host.
+function isTrustedOrigin(originOrUrl) {
+  if (!originOrUrl) return false;
+  try {
+    const host = new URL(originOrUrl).hostname.toLowerCase();
+    return TRUSTED_HOST_SUFFIXES.some(
+      suffix => host === suffix || host.endsWith('.' + suffix)
+    );
+  } catch (err) {
+    return false;
+  }
+}
+
 // Log levels
 const LOG_LEVELS = {
   ERROR: 0,
@@ -820,7 +844,7 @@ function createWindow(isFullscreen = false) {
             (function() {
               const body = document.body;
               if (body && body.innerHTML.trim() === '') {
-                logger.warning('[New Window] Page appears to be blank - no content detected');
+                console.warn('[New Window] Page appears to be blank - no content detected');
                 return true;
               }
               return false;
@@ -1020,18 +1044,18 @@ function createWindow(isFullscreen = false) {
           if (navigator.permissions && navigator.permissions.query) {
             const originalQuery = navigator.permissions.query.bind(navigator.permissions);
             navigator.permissions.query = function(descriptor) {
-              logger.debug('[Permissions API] Query:', descriptor.name);
+              console.debug('[Permissions API] Query:', descriptor.name);
               if (descriptor.name === 'camera' || descriptor.name === 'microphone' || descriptor.name === 'media') {
-                logger.debug('[Permissions API] Returning granted for:', descriptor.name);
+                console.debug('[Permissions API] Returning granted for:', descriptor.name);
                 return Promise.resolve({ state: 'granted', onchange: null });
               }
               return originalQuery(descriptor);
             };
           }
-          
+
           // Also ensure getUserMedia works by pre-granting permissions
           if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            logger.debug('[MediaDevices] getUserMedia API available');
+            console.debug('[MediaDevices] getUserMedia API available');
           }
         })();
       `).catch(() => {});
@@ -1059,32 +1083,32 @@ function createWindow(isFullscreen = false) {
           
           // Try to catch and handle errors that might cause crashes
           window.addEventListener('error', function(e) {
-            logger.debug('Global error caught:', e.message, e.filename, e.lineno);
+            console.debug('Global error caught:', e.message, e.filename, e.lineno);
             try {
               e.preventDefault();
             } catch (err) {
-              logger.error('Error preventing default:', err);
+              console.error('Error preventing default:', err);
             }
             return true;
           }, true);
-          
+
           window.addEventListener('unhandledrejection', function(e) {
-            logger.debug('Unhandled promise rejection:', e.reason);
+            console.debug('Unhandled promise rejection:', e.reason);
             try {
               e.preventDefault();
             } catch (err) {
-              logger.error('Error preventing default in unhandledrejection:', err);
+              console.error('Error preventing default in unhandledrejection:', err);
             }
           });
-          
+
           // Handle window beforeunload - don't prevent closing
           window.addEventListener('beforeunload', function(e) {
             try {
-              logger.debug('Window beforeunload event');
+              console.debug('Window beforeunload event');
               // Don't prevent the unload - allow the window to close
               // The page should be able to close normally
             } catch (err) {
-              logger.error('Error in beforeunload handler:', err);
+              console.error('Error in beforeunload handler:', err);
             }
           });
         })();
@@ -1356,7 +1380,9 @@ app.whenReady().then(() => {
   // Set up permission handlers BEFORE creating any windows
   // This ensures they're active for all windows from the start
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
-    logger.debug(`[Permission Request] ${permission} from ${details.requestingUrl || 'unknown'}`);
+    const requestingUrl = details.requestingUrl ||
+      (webContents && !webContents.isDestroyed() ? webContents.getURL() : '');
+    logger.debug(`[Permission Request] ${permission} from ${requestingUrl || 'unknown'}`);
     logger.debug(`[Permission Request] Full details:`, JSON.stringify(details, null, 2));
     // Allow camera, microphone, notifications, and other media permissions
     // Note: "media" is a combined permission for camera + microphone
@@ -1376,10 +1402,15 @@ app.whenReady().then(() => {
     // Check if permission is allowed (case-insensitive)
     const permissionLower = permission.toLowerCase();
     const isAllowed = allowedPermissions.some(p => p.toLowerCase() === permissionLower);
-    
-    if (isAllowed) {
+    // Only grant sensitive permissions to trusted Microsoft origins
+    const trusted = isTrustedOrigin(requestingUrl);
+
+    if (isAllowed && trusted) {
       logger.debug(`[Permission Request] GRANTED: ${permission}`);
       callback(true); // Allow the permission
+    } else if (isAllowed && !trusted) {
+      logger.warning(`[Permission Request] DENIED: ${permission} from untrusted origin ${requestingUrl || 'unknown'}`);
+      callback(false); // Deny permissions requested by untrusted origins
     } else {
       logger.debug(`[Permission Request] DENIED: ${permission} (not in allowed list: ${allowedPermissions.join(', ')})`);
       callback(false); // Deny other permissions
@@ -1400,9 +1431,10 @@ app.whenReady().then(() => {
       'fullscreen'
     ];
 
-    // Check if permission is allowed (case-insensitive)
+    // Check if permission is allowed (case-insensitive) AND comes from a trusted origin
     const permissionLower = permission.toLowerCase();
-    const allowed = allowedPermissions.some(p => p.toLowerCase() === permissionLower);
+    const allowed = allowedPermissions.some(p => p.toLowerCase() === permissionLower) &&
+      isTrustedOrigin(requestingOrigin);
     logger.debug(`[Permission Check] ${permission} from ${requestingOrigin} -> ${allowed ? 'ALLOWED' : 'DENIED'}`);
     return allowed;
   });
