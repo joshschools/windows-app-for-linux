@@ -10,7 +10,8 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+# NOTE: package-lock.json is intentionally committed so CI can run `npm ci`
+# for reproducible builds. Do not re-add it here.
 
 # IDE
 .vscode/

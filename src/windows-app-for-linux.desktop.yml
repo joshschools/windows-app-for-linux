@@ -1,53 +1,46 @@
-app-id: com.microsoft.WindowsAppForLinux
+app-id: io.github.joshschools.WindowsAppForLinux
 runtime: org.freedesktop.Platform
-runtime-version: '23.08'
+runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
 command: windows-app-for-linux
 finish-args:
   - --share=ipc
-  - --socket=wayland
-  - --socket=x11
-  - --socket=pulseaudio
-  - --device=all
   - --share=network
-  - --talk-name=org.freedesktop.Flatpak
-  - --filesystem=home
-  - --filesystem=xdg-documents
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  # GPU acceleration; --device=all is required for webcam access inside remote
+  # desktop sessions (Flatpak has no finer-grained camera device permission).
+  - --device=dri
+  - --device=all
+  # Scoped file access for remote-desktop file transfer (was --filesystem=home).
   - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  # NOTE: --talk-name=org.freedesktop.Flatpak was intentionally removed; it grants
+  # host command execution (a sandbox escape) and is not needed by this app.
 
 modules:
   - name: windows-app-for-linux
     buildsystem: simple
+    # Reuses the node_modules produced by `npm ci` at the repo root (see CI),
+    # then runs Electron's own bundled binary. This avoids apt/nodesource, which
+    # cannot run inside the freedesktop SDK sandbox the way the old manifest tried.
     build-commands:
+      - mkdir -p /app/windows-app-for-linux /app/bin
+      - cp -r src/main.js src/settings-preload.js src/security.js src/config.js src/shortcuts.js src/recovery.js package.json node_modules /app/windows-app-for-linux/
       - |
-        # Install Node.js from NodeSource
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-        apt-get install -y nodejs
-        
-        # Install dependencies
-        npm install --production
-        
-        # Create launcher script
-        mkdir -p /app/bin
         cat > /app/bin/windows-app-for-linux << 'EOF'
         #!/bin/sh
-        cd /app
-        exec /usr/bin/node /app/node_modules/electron/cli.js /app/main.js "$@"
+        exec /app/windows-app-for-linux/node_modules/electron/dist/electron \
+          --no-sandbox /app/windows-app-for-linux/main.js "$@"
         EOF
-        chmod +x /app/bin/windows-app-for-linux
-        
-        # Copy application files
-        install -Dm644 main.js /app/main.js
-        install -Dm644 package.json /app/package.json
-        cp -r node_modules /app/
-        
-        # Install desktop file
-        install -Dm644 windows-app-for-linux.desktop /app/share/applications/windows-app-for-linux.desktop
-        
-        # Install icon if it exists
-        if [ -f windows-app-for-linux.desktop.png ]; then
-          install -Dm644 windows-app-for-linux.desktop.png /app/share/icons/hicolor/512x512/apps/windows-app-for-linux.desktop.png
-        fi
+      - chmod +x /app/bin/windows-app-for-linux
+      - install -Dm644 src/windows-app-for-linux.desktop /app/share/applications/io.github.joshschools.WindowsAppForLinux.desktop
+      - install -Dm644 src/windows-app-for-linux.desktop.512x512.png /app/share/icons/hicolor/512x512/apps/io.github.joshschools.WindowsAppForLinux.png
+      - install -Dm644 src/windows-app-for-linux.desktop.256x256.png /app/share/icons/hicolor/256x256/apps/io.github.joshschools.WindowsAppForLinux.png
     sources:
       - type: dir
-        path: .
+        path: ..
+        skip:
+          - .git
+          - build

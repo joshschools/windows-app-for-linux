@@ -3,6 +3,19 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 
+// Pure, unit-tested helpers (see src/*.js and test/*.test.js)
+const { isTrustedOrigin, isAllowedNavigationUrl } = require('./security');
+const {
+  DEFAULT_USER_AGENT,
+  DEFAULT_CONNECTION_URL,
+  LOG_LEVELS,
+  DEFAULT_CONFIG,
+  sanitizeSettings,
+  mergeConfig
+} = require('./config');
+const { isForceCloseShortcut, isFullscreenToggle, isDevToolsToggle } = require('./shortcuts');
+const { shouldRetryCrash } = require('./recovery');
+
 // Set userData path to a persistent location
 // In snaps, use SNAP_USER_DATA if available, otherwise use standard XDG config directory
 if (process.env.SNAP_USER_DATA) {
@@ -16,28 +29,8 @@ if (process.env.SNAP_USER_DATA) {
   // Will be logged after logger is initialized
 }
 
-// Default User-Agent string
-const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0';
-
-// Default connection address
-const DEFAULT_CONNECTION_URL = 'https://windows.cloud.microsoft/#/devices';
-
-// Log levels
-const LOG_LEVELS = {
-  ERROR: 0,
-  WARNING: 1,
-  INFO: 2,
-  DEBUG: 3
-};
-
-// Application configuration
-let appConfig = {
-  logLevel: LOG_LEVELS.INFO, // Default to INFO level
-  connectionUrl: DEFAULT_CONNECTION_URL,
-  userAgent: DEFAULT_USER_AGENT,
-  windowWidth: 1024,
-  windowHeight: 768
-};
+// Application configuration (defaults live in ./config)
+let appConfig = Object.assign({}, DEFAULT_CONFIG);
 
 // Load configuration from file
 function loadConfig() {
@@ -46,7 +39,9 @@ function loadConfig() {
     if (fs.existsSync(configPath)) {
       const configData = fs.readFileSync(configPath, 'utf8');
       const loaded = JSON.parse(configData);
-      appConfig = { ...appConfig, ...loaded };
+      // mergeConfig validates each field, so a corrupt config.json can't
+      // overwrite a good default with garbage.
+      appConfig = mergeConfig(appConfig, loaded);
       log(LOG_LEVELS.INFO, 'Configuration loaded from', configPath);
     }
   } catch (err) {
@@ -204,7 +199,7 @@ function showAboutDialog() {
 </head>
 <body>
   <h1>Windows App for Linux</h1>
-  <div class="version">Version 1.0.0</div>
+  <div class="version">Version ${app.getVersion()}</div>
   <div class="description">
     Unofficial client for Windows App - Access Azure Virtual Desktops on Linux via Windows App web access.
   </div>
@@ -218,30 +213,10 @@ function showAboutDialog() {
 
 // Settings dialog
 function showSettingsDialog() {
-  // Create preload script for settings window
-  const preloadScript = `
-const { contextBridge, ipcRenderer } = require('electron');
+  // Use the static, shipped preload (settings-preload.js) rather than writing
+  // one to disk at runtime.
+  const preloadPath = path.join(__dirname, 'settings-preload.js');
 
-contextBridge.exposeInMainWorld('electronAPI', {
-  send: (channel, data) => {
-    // Whitelist channels for security
-    const validChannels = ['save-settings', 'clear-cache'];
-    if (validChannels.includes(channel)) {
-      ipcRenderer.send(channel, data);
-    }
-  }
-});
-`;
-  
-  // Write preload script to temporary file
-  const userDataPath = app.getPath('userData');
-  // Ensure userData directory exists
-  if (!fs.existsSync(userDataPath)) {
-    fs.mkdirSync(userDataPath, { recursive: true });
-  }
-  const preloadPath = path.join(userDataPath, 'settings-preload.js');
-  fs.writeFileSync(preloadPath, preloadScript, 'utf8');
-  
   const settingsWindow = new BrowserWindow({
     width: 700,
     height: 650,
@@ -432,7 +407,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   settingsWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
   
   // Handle IPC messages from settings window
-  const saveHandler = (event, settings) => {
+  const saveHandler = (event, rawSettings) => {
+    // Re-validate in the main process; never trust values straight off IPC.
+    const settings = sanitizeSettings(rawSettings);
     if (settings.connectionUrl) {
       appConfig.connectionUrl = settings.connectionUrl;
     }
@@ -462,15 +439,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       // Note: Window size changes will apply to new windows, not the current one
     }
   };
-  
+
   const clearCacheHandler = async () => {
     try {
       await session.defaultSession.clearCache();
+      // clearStorageData() (no options) already removes cookies, cache,
+      // localStorage, IndexedDB, etc., so no manual cookie loop is needed.
       await session.defaultSession.clearStorageData();
-      const cookies = await session.defaultSession.cookies.get({});
-      for (const cookie of cookies) {
-        await session.defaultSession.cookies.remove(cookie.url || `http${cookie.secure ? 's' : ''}://${cookie.domain}`, cookie.name);
-      }
       logger.info('Cache and cookies cleared');
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.reload();
@@ -666,6 +641,67 @@ function createMenu() {
   Menu.setApplicationMenu(menu);
 }
 
+// --- Shared window behavior (used by both the main window and child windows) ---
+
+// Keep the menu bar visible except while in fullscreen.
+function attachFullscreenMenuToggle(win) {
+  win.setMenuBarVisibility(true);
+  win.on('enter-full-screen', () => {
+    setTimeout(() => {
+      if (!win.isDestroyed()) win.setMenuBarVisibility(false);
+    }, 100);
+  });
+  win.on('leave-full-screen', () => {
+    setTimeout(() => {
+      if (!win.isDestroyed()) win.setMenuBarVisibility(true);
+    }, 100);
+  });
+}
+
+// F11 toggles fullscreen, F12 toggles DevTools. When allowForceClose is set,
+// Ctrl/Cmd+W and Ctrl/Cmd+Q destroy the window (used for child windows whose
+// page may block a normal close). All other keys, including system shortcuts,
+// pass through untouched.
+function attachWindowKeyShortcuts(win, { allowForceClose = false } = {}) {
+  win.webContents.on('before-input-event', (event, input) => {
+    if (isFullscreenToggle(input)) {
+      win.setFullScreen(!win.isFullScreen());
+      setTimeout(() => {
+        if (!win.isDestroyed()) win.setMenuBarVisibility(!win.isFullScreen());
+      }, 100);
+    } else if (isDevToolsToggle(input)) {
+      if (win.webContents.isDevToolsOpened()) {
+        win.webContents.closeDevTools();
+      } else {
+        win.webContents.openDevTools();
+      }
+    } else if (allowForceClose && isForceCloseShortcut(input)) {
+      event.preventDefault();
+      logger.debug('Force closing window via keyboard shortcut');
+      if (!win.isDestroyed()) win.destroy();
+    }
+  });
+}
+
+// Install the browser-like request header rewrite on the default session. Called
+// once from app.whenReady() (it is session-global, not per-window).
+function installRequestHeaderRewrite() {
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    details.requestHeaders['User-Agent'] = appConfig.userAgent;
+    // Add headers that browsers send by default
+    if (!details.requestHeaders['Accept']) {
+      details.requestHeaders['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8';
+    }
+    if (!details.requestHeaders['Accept-Language']) {
+      details.requestHeaders['Accept-Language'] = 'en-US,en;q=0.9';
+    }
+    if (!details.requestHeaders['Accept-Encoding']) {
+      details.requestHeaders['Accept-Encoding'] = 'gzip, deflate, br';
+    }
+    callback({ requestHeaders: details.requestHeaders });
+  });
+}
+
 function createWindow(isFullscreen = false) {
   // Create the browser window
   mainWindow = new BrowserWindow({
@@ -683,21 +719,9 @@ function createWindow(isFullscreen = false) {
     show: false // Don't show until ready
   });
 
-  // Set User-Agent and browser-like headers before loading
-  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
-    details.requestHeaders['User-Agent'] = appConfig.userAgent;
-    // Add headers that browsers send by default
-    if (!details.requestHeaders['Accept']) {
-      details.requestHeaders['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8';
-    }
-    if (!details.requestHeaders['Accept-Language']) {
-      details.requestHeaders['Accept-Language'] = 'en-US,en;q=0.9';
-    }
-    if (!details.requestHeaders['Accept-Encoding']) {
-      details.requestHeaders['Accept-Encoding'] = 'gzip, deflate, br';
-    }
-    callback({ requestHeaders: details.requestHeaders });
-  });
+  // Note: the User-Agent / browser-like header rewrite is installed once on the
+  // default session in app.whenReady() (installRequestHeaderRewrite). It is
+  // session-global, so it does not belong in per-window setup.
 
   // Note: Permission handlers are now set up in app.whenReady() BEFORE createWindow()
   // This ensures they're active for all windows from the start
@@ -709,7 +733,18 @@ function createWindow(isFullscreen = false) {
     logger.debug('Frame Name:', frameName);
     logger.debug('Features:', features);
     logger.debug('========================');
-    
+
+    // Only open known Microsoft URLs in an in-app window (child windows are
+    // unsandboxed and media-permitted). Anything else goes to the external
+    // browser so an unexpected redirect can't run in a privileged window.
+    if (!isAllowedNavigationUrl(url)) {
+      logger.warning('[New Window] Untrusted URL opened externally:', url);
+      shell.openExternal(url).catch(err => {
+        logger.error('[New Window] Failed to open external URL:', err);
+      });
+      return { action: 'deny' };
+    }
+
     // Create a new window for the remote desktop or other pages
     // Use the same session as the main window to share cookies/auth
     // This is critical for authentication to work across windows
@@ -735,7 +770,12 @@ function createWindow(isFullscreen = false) {
         enableWebSQL: false,
         // Enable features that browsers have by default
         enableBlinkFeatures: 'SharedArrayBuffer',
-        // Disable sandbox for better compatibility with RDP client
+        // SECURITY TRADEOFF: the Chromium sandbox is disabled here because the
+        // remote-desktop (RDP/AVD) client relies on shared memory that breaks
+        // under the sandbox in this Electron build. The risk is bounded by only
+        // ever loading trusted Microsoft URLs in this window (see the
+        // isAllowedNavigationUrl gate above); anything else is opened in the
+        // external browser instead. Revisit if the RDP client works sandboxed.
         sandbox: false,
         // Additional options that might help
         v8CacheOptions: 'code'
@@ -820,7 +860,7 @@ function createWindow(isFullscreen = false) {
             (function() {
               const body = document.body;
               if (body && body.innerHTML.trim() === '') {
-                logger.warning('[New Window] Page appears to be blank - no content detected');
+                console.warn('[New Window] Page appears to be blank - no content detected');
                 return true;
               }
               return false;
@@ -961,26 +1001,28 @@ function createWindow(isFullscreen = false) {
     });
 
     // Handle renderer process crashes
-    let crashCount = 0;
-    const MAX_CRASHES = 1; // Only reload once - if it crashes again, it's likely the same issue
-    
+    let crashRetries = 0;
+    const MAX_CRASH_RETRIES = 1; // Reload once; if it crashes again it's likely persistent
+
     newWindow.webContents.on('render-process-gone', (event, details) => {
       logger.error('=== RENDER PROCESS CRASHED ===');
       logger.error('Reason:', details.reason);
       logger.error('Exit Code:', details.exitCode);
-      logger.error('Crash Count:', crashCount + 1);
+      logger.error('Retries so far:', crashRetries);
       logger.error('Details:', JSON.stringify(details, null, 2));
       logger.error('URL at crash:', newWindow.webContents.getURL());
       logger.error('=============================');
-      
-      crashCount++;
-      
-      // Only try to reload once - if it crashes again, it's likely a persistent issue
-      if (details.reason === 'crashed' && crashCount < MAX_CRASHES) {
-        logger.debug(`Attempting to reload crashed page (attempt ${crashCount}/${MAX_CRASHES})...`);
+
+      // shouldRetryCrash checks attempts-so-far BEFORE incrementing, so the
+      // first crash actually reloads (the old code never did - see recovery.js).
+      if (shouldRetryCrash(details.reason, crashRetries, MAX_CRASH_RETRIES)) {
+        crashRetries++;
+        logger.debug(`Attempting to reload crashed page (attempt ${crashRetries}/${MAX_CRASH_RETRIES})...`);
         // Wait a bit longer before reload to let things settle
         setTimeout(() => {
-          newWindow.reload();
+          if (!newWindow.isDestroyed()) {
+            newWindow.reload();
+          }
         }, 3000);
       } else {
         logger.error('Render process crashed. Attempting to recover...');
@@ -1020,18 +1062,18 @@ function createWindow(isFullscreen = false) {
           if (navigator.permissions && navigator.permissions.query) {
             const originalQuery = navigator.permissions.query.bind(navigator.permissions);
             navigator.permissions.query = function(descriptor) {
-              logger.debug('[Permissions API] Query:', descriptor.name);
+              console.debug('[Permissions API] Query:', descriptor.name);
               if (descriptor.name === 'camera' || descriptor.name === 'microphone' || descriptor.name === 'media') {
-                logger.debug('[Permissions API] Returning granted for:', descriptor.name);
+                console.debug('[Permissions API] Returning granted for:', descriptor.name);
                 return Promise.resolve({ state: 'granted', onchange: null });
               }
               return originalQuery(descriptor);
             };
           }
-          
+
           // Also ensure getUserMedia works by pre-granting permissions
           if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            logger.debug('[MediaDevices] getUserMedia API available');
+            console.debug('[MediaDevices] getUserMedia API available');
           }
         })();
       `).catch(() => {});
@@ -1059,32 +1101,32 @@ function createWindow(isFullscreen = false) {
           
           // Try to catch and handle errors that might cause crashes
           window.addEventListener('error', function(e) {
-            logger.debug('Global error caught:', e.message, e.filename, e.lineno);
+            console.debug('Global error caught:', e.message, e.filename, e.lineno);
             try {
               e.preventDefault();
             } catch (err) {
-              logger.error('Error preventing default:', err);
+              console.error('Error preventing default:', err);
             }
             return true;
           }, true);
-          
+
           window.addEventListener('unhandledrejection', function(e) {
-            logger.debug('Unhandled promise rejection:', e.reason);
+            console.debug('Unhandled promise rejection:', e.reason);
             try {
               e.preventDefault();
             } catch (err) {
-              logger.error('Error preventing default in unhandledrejection:', err);
+              console.error('Error preventing default in unhandledrejection:', err);
             }
           });
-          
+
           // Handle window beforeunload - don't prevent closing
           window.addEventListener('beforeunload', function(e) {
             try {
-              logger.debug('Window beforeunload event');
+              console.debug('Window beforeunload event');
               // Don't prevent the unload - allow the window to close
               // The page should be able to close normally
             } catch (err) {
-              logger.error('Error in beforeunload handler:', err);
+              console.error('Error in beforeunload handler:', err);
             }
           });
         })();
@@ -1114,72 +1156,10 @@ function createWindow(isFullscreen = false) {
       // DevTools disabled by default - can be toggled via menu
     });
 
-    // Handle fullscreen toggle for new windows (F11)
-    // Menu bar visible by default, hidden in fullscreen
-    newWindow.setMenuBarVisibility(true);
-    
-    // Hide menu bar when entering fullscreen, show when leaving
-    newWindow.on('enter-full-screen', () => {
-      setTimeout(() => {
-        if (!newWindow.isDestroyed()) {
-          newWindow.setMenuBarVisibility(false);
-        }
-      }, 100);
-    });
-    
-    newWindow.on('leave-full-screen', () => {
-      setTimeout(() => {
-        if (!newWindow.isDestroyed()) {
-          newWindow.setMenuBarVisibility(true);
-        }
-      }, 100);
-    });
-    
-    newWindow.webContents.on('before-input-event', (event, input) => {
-      // Allow system shortcuts to pass through (Windows key, Alt+Tab, etc.)
-      // These are system-level shortcuts that should work even in fullscreen
-      const systemKeys = ['Super', 'Meta', 'Alt', 'Tab', 'Escape'];
-      const isSystemKey = systemKeys.includes(input.key) || 
-                         (input.alt && input.key === 'Tab') ||
-                         (input.meta && input.key !== 'F11' && input.key !== 'F12');
-      
-      // Only handle our specific shortcuts, let system shortcuts pass through
-      if (input.key === 'F11') {
-        const isFullscreen = newWindow.isFullScreen();
-        newWindow.setFullScreen(!isFullscreen);
-        // Update menu bar visibility after toggling fullscreen
-        setTimeout(() => {
-          if (!newWindow.isDestroyed()) {
-            newWindow.setMenuBarVisibility(!newWindow.isFullScreen());
-          }
-        }, 100);
-      } else if (input.key === 'F12') {
-        // Toggle DevTools with F12 (like Edge)
-        if (newWindow.webContents.isDevToolsOpened()) {
-          newWindow.webContents.closeDevTools();
-        } else {
-          newWindow.webContents.openDevTools();
-        }
-      } else if ((input.control || input.meta) && input.key === 'W') {
-        // Ctrl+W or Cmd+W - Force close the window
-        event.preventDefault();
-        logger.debug('[New Window] Force closing via Ctrl+W');
-        if (!newWindow.isDestroyed()) {
-          newWindow.destroy();
-        }
-      } else if ((input.control || input.meta) && input.key === 'Q') {
-        // Ctrl+Q or Cmd+Q - Force close the window
-        event.preventDefault();
-        logger.debug('[New Window] Force closing via Ctrl+Q');
-        if (!newWindow.isDestroyed()) {
-          newWindow.destroy();
-        }
-      } else if (isSystemKey && !input.control && !input.shift) {
-        // Allow system shortcuts to pass through to the OS
-        // Don't prevent default for system keys
-        return;
-      }
-    });
+    // Menu bar visible by default, hidden in fullscreen; child windows also
+    // support Ctrl/Cmd+W and Ctrl/Cmd+Q force-close (their page may block close).
+    attachFullscreenMenuToggle(newWindow);
+    attachWindowKeyShortcuts(newWindow, { allowForceClose: true });
 
     // Return deny since we're handling the window ourselves
     // This prevents Electron from creating a duplicate window
@@ -1243,58 +1223,10 @@ function createWindow(isFullscreen = false) {
 
   windows.add(mainWindow);
 
-  // Handle fullscreen toggle (F11 or ESC)
-  // Menu bar visible by default, hidden in fullscreen
-  mainWindow.setMenuBarVisibility(true);
-  
-  // Hide menu bar when entering fullscreen, show when leaving
-  mainWindow.on('enter-full-screen', () => {
-    setTimeout(() => {
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.setMenuBarVisibility(false);
-      }
-    }, 100);
-  });
-  
-  mainWindow.on('leave-full-screen', () => {
-    setTimeout(() => {
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.setMenuBarVisibility(true);
-      }
-    }, 100);
-  });
-  
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    // Allow system shortcuts to pass through (Windows key, Alt+Tab, etc.)
-    // These are system-level shortcuts that should work even in fullscreen
-    const systemKeys = ['Super', 'Meta', 'Alt', 'Tab', 'Escape'];
-    const isSystemKey = systemKeys.includes(input.key) || 
-                       (input.alt && input.key === 'Tab') ||
-                       (input.meta && input.key !== 'F11' && input.key !== 'F12');
-    
-    // Only handle our specific shortcuts, let system shortcuts pass through
-    if (input.key === 'F11') {
-      const isFullscreen = mainWindow.isFullScreen();
-      mainWindow.setFullScreen(!isFullscreen);
-      // Update menu bar visibility after toggling fullscreen
-      setTimeout(() => {
-        if (!mainWindow.isDestroyed()) {
-          mainWindow.setMenuBarVisibility(!mainWindow.isFullScreen());
-        }
-      }, 100);
-    } else if (input.key === 'F12') {
-      // Toggle DevTools with F12 (like Edge)
-      if (mainWindow.webContents.isDevToolsOpened()) {
-        mainWindow.webContents.closeDevTools();
-      } else {
-        mainWindow.webContents.openDevTools();
-      }
-    } else if (isSystemKey && !input.control && !input.shift) {
-      // Allow system shortcuts to pass through to the OS
-      // Don't prevent default for system keys
-      return;
-    }
-  });
+  // Menu bar visible by default, hidden in fullscreen; F11 fullscreen + F12
+  // DevTools. (No force-close on the main window - closing it quits the app.)
+  attachFullscreenMenuToggle(mainWindow);
+  attachWindowKeyShortcuts(mainWindow);
 }
 
 // Set User-Agent for the entire session
@@ -1320,7 +1252,10 @@ app.whenReady().then(() => {
 
   // Set default User-Agent
   session.defaultSession.setUserAgent(appConfig.userAgent);
-  
+
+  // Install the browser-like request header rewrite once (session-global)
+  installRequestHeaderRewrite();
+
   // Ensure cookies are persisted
   // The default session should persist cookies automatically, but let's verify
   logger.debug('Session storage path:', session.defaultSession.getStoragePath());
@@ -1356,7 +1291,9 @@ app.whenReady().then(() => {
   // Set up permission handlers BEFORE creating any windows
   // This ensures they're active for all windows from the start
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
-    logger.debug(`[Permission Request] ${permission} from ${details.requestingUrl || 'unknown'}`);
+    const requestingUrl = details.requestingUrl ||
+      (webContents && !webContents.isDestroyed() ? webContents.getURL() : '');
+    logger.debug(`[Permission Request] ${permission} from ${requestingUrl || 'unknown'}`);
     logger.debug(`[Permission Request] Full details:`, JSON.stringify(details, null, 2));
     // Allow camera, microphone, notifications, and other media permissions
     // Note: "media" is a combined permission for camera + microphone
@@ -1376,10 +1313,15 @@ app.whenReady().then(() => {
     // Check if permission is allowed (case-insensitive)
     const permissionLower = permission.toLowerCase();
     const isAllowed = allowedPermissions.some(p => p.toLowerCase() === permissionLower);
-    
-    if (isAllowed) {
+    // Only grant sensitive permissions to trusted Microsoft origins
+    const trusted = isTrustedOrigin(requestingUrl);
+
+    if (isAllowed && trusted) {
       logger.debug(`[Permission Request] GRANTED: ${permission}`);
       callback(true); // Allow the permission
+    } else if (isAllowed && !trusted) {
+      logger.warning(`[Permission Request] DENIED: ${permission} from untrusted origin ${requestingUrl || 'unknown'}`);
+      callback(false); // Deny permissions requested by untrusted origins
     } else {
       logger.debug(`[Permission Request] DENIED: ${permission} (not in allowed list: ${allowedPermissions.join(', ')})`);
       callback(false); // Deny other permissions
@@ -1400,9 +1342,10 @@ app.whenReady().then(() => {
       'fullscreen'
     ];
 
-    // Check if permission is allowed (case-insensitive)
+    // Check if permission is allowed (case-insensitive) AND comes from a trusted origin
     const permissionLower = permission.toLowerCase();
-    const allowed = allowedPermissions.some(p => p.toLowerCase() === permissionLower);
+    const allowed = allowedPermissions.some(p => p.toLowerCase() === permissionLower) &&
+      isTrustedOrigin(requestingOrigin);
     logger.debug(`[Permission Check] ${permission} from ${requestingOrigin} -> ${allowed ? 'ALLOWED' : 'DENIED'}`);
     return allowed;
   });

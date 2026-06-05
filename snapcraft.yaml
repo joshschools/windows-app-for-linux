@@ -9,10 +9,10 @@ description: |
   Windows Cloud Devices web interface in an Electron shell, configured to behave like 
   Microsoft Edge browser. It enables full access to Azure Virtual Desktop sessions with 
   proper browser emulation, device permissions, and remote desktop support.
-contact: https://github.com/mariuszkopowski/windows-app-for-linux
-website: https://github.com/mariuszkopowski/windows-app-for-linux
-source-code: https://github.com/mariuszkopowski/windows-app-for-linux
-issues: https://github.com/mariuszkopowski/windows-app-for-linux/issues
+contact: https://github.com/joshschools/windows-app-for-linux
+website: https://github.com/joshschools/windows-app-for-linux
+source-code: https://github.com/joshschools/windows-app-for-linux
+issues: https://github.com/joshschools/windows-app-for-linux/issues
 icon: src/windows-app-for-linux.desktop.png
 
 grade: stable

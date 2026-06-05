@@ -6,7 +6,9 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron src/main.js",
+    "test": "node --test",
     "build": "electron-builder",
+    "build:appimage": "electron-builder --linux AppImage",
     "build:snap": "./scripts/build-snap.sh",
     "build:flatpak": "flatpak-builder build/flatpak-build src/windows-app-for-linux.desktop.yml --force-clean",
     "install:flatpak": "flatpak-builder --user --install --force-clean build/flatpak-build src/windows-app-for-linux.desktop.yml",
@@ -19,8 +21,26 @@
     "windows-cloud",
     "remote-desktop"
   ],
-  "author": "",
+  "author": "joshschools",
   "license": "MIT",
+  "build": {
+    "appId": "io.github.joshschools.WindowsAppForLinux",
+    "productName": "Windows App for Linux",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "build/appimage"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Network",
+      "icon": "src/windows-app-for-linux.desktop.512x512.png"
+    }
+  },
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^24.9.1"

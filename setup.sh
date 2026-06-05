@@ -32,18 +32,17 @@ echo ""
 echo "Creating build directory..."
 mkdir -p build
 
-# Install dependencies
+# Install dependencies (package.json lives at the repo root)
 echo "Installing dependencies..."
-cd src
 npm install
 
 if [ $? -eq 0 ]; then
     echo ""
     echo "Setup complete! You can now:"
-    echo "  - Run the app: cd src && npm start"
-    echo "  - Build snap: cd src && npm run build:snap"
-    echo "  - Build flatpak: cd src && npm run build:flatpak"
-    echo "  - Clean build artifacts: cd src && npm run clean"
+    echo "  - Run the app: npm start"
+    echo "  - Build snap: npm run build:snap"
+    echo "  - Build flatpak: npm run build:flatpak"
+    echo "  - Clean build artifacts: npm run clean"
 else
     echo ""
     echo "Failed to install dependencies. Please check the error messages above."

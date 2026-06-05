@@ -11,30 +11,56 @@ on:
       - main
   workflow_dispatch:
 
+# Run JS-based actions on Node 24. checkout/setup-node are pinned to v5 (native
+# Node 24); this also opts in upload-/download-artifact@v4 and action-gh-release,
+# which have no Node 24 major yet, ahead of GitHub's forced migration.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  build-snap:
-    name: Build Snap Package
+  test:
+    name: Unit Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install snapcraft
-        uses: snapcore/action-setup@v1
-        with:
-          snapcraft-channel: 'latest/stable'
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: |
-          cd src
-          npm ci
+        run: npm ci
+
+      - name: Syntax check main process
+        run: node --check src/main.js
+
+      - name: Run tests
+        run: npm test
+
+  build-snap:
+    name: Build Snap Package
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build Snap package
         run: |
@@ -71,10 +97,11 @@ jobs:
 
   build-flatpak:
     name: Build Flatpak Package
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Flatpak and dependencies
         run: |
@@ -85,17 +112,19 @@ jobs:
         run: |
           flatpak remote-add --if-not-exists --user flathub https://flathub.org/repo/flathub.flatpakrepo
 
+      - name: Install Flatpak runtime and SDK
+        run: |
+          flatpak install -y --user flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: |
-          cd src
-          npm ci
+        run: npm ci
 
       - name: Build Flatpak package
         run: |
@@ -112,7 +141,7 @@ jobs:
           flatpak build-bundle \
             build/flatpak-repo \
             build/windows-app-for-linux.flatpak \
-            com.microsoft.WindowsAppForLinux \
+            io.github.joshschools.WindowsAppForLinux \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Upload Flatpak artifact
@@ -122,16 +151,44 @@ jobs:
           path: build/*.flatpak
           retention-days: 30
 
+  build-appimage:
+    name: Build AppImage Package
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build AppImage package
+        run: npx electron-builder --linux AppImage --publish never
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage-package
+          path: build/appimage/*.AppImage
+          retention-days: 30
+
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [build-snap, build-flatpak]
-    if: startsWith(github.ref, 'refs/tags/v') && needs.build-snap.result == 'success' && needs.build-flatpak.result == 'success'
+    needs: [build-snap, build-flatpak, build-appimage]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build-snap.result == 'success' && needs.build-flatpak.result == 'success' && needs.build-appimage.result == 'success'
     permissions:
       contents: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -175,6 +232,13 @@ jobs:
           name: flatpak-package
           path: release-artifacts/
 
+      - name: Download AppImage artifact
+        if: steps.verify_branch.outputs.is_main == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: appimage-package
+          path: release-artifacts/
+
       - name: Create Release
         if: steps.verify_branch.outputs.is_main == 'true'
         uses: softprops/action-gh-release@v1
@@ -194,19 +258,26 @@ jobs:
             ```bash
             flatpak install windows-app-for-linux.flatpak
             ```
-            
+
+            **AppImage:**
+            ```bash
+            chmod +x Windows*App*for*Linux*.AppImage
+            ./Windows*App*for*Linux*.AppImage
+            ```
+
             ### Changes
             See the [full changelog](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.ref }}) for details.
           files: |
             release-artifacts/*.snap
             release-artifacts/*.flatpak
+            release-artifacts/*.AppImage
           draft: false
           prerelease: false
 
   build-summary:
     name: Build Summary
     runs-on: ubuntu-latest
-    needs: [build-snap, build-flatpak]
+    needs: [build-snap, build-flatpak, build-appimage]
     if: always()
     steps:
       - name: Download Snap artifact
@@ -220,6 +291,12 @@ jobs:
         with:
           name: flatpak-package
           path: artifacts/flatpak
+
+      - name: Download AppImage artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: appimage-package
+          path: artifacts/appimage
 
       - name: Display build summary
         run: |
@@ -239,5 +316,13 @@ jobs:
             echo "✅ Flatpak package built successfully" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Flatpak package build failed" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### AppImage Package" >> $GITHUB_STEP_SUMMARY
+          if [ -f artifacts/appimage/*.AppImage ]; then
+            ls -lh artifacts/appimage/*.AppImage >> $GITHUB_STEP_SUMMARY
+            echo "✅ AppImage package built successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ AppImage package build failed" >> $GITHUB_STEP_SUMMARY
           fi
 
