@@ -36,7 +36,8 @@ modules:
         EOF
       - chmod +x /app/bin/windows-app-for-linux
       - install -Dm644 src/windows-app-for-linux.desktop /app/share/applications/io.github.joshschools.WindowsAppForLinux.desktop
-      - install -Dm644 src/windows-app-for-linux.desktop.png /app/share/icons/hicolor/512x512/apps/io.github.joshschools.WindowsAppForLinux.png
+      - install -Dm644 src/windows-app-for-linux.desktop.512x512.png /app/share/icons/hicolor/512x512/apps/io.github.joshschools.WindowsAppForLinux.png
+      - install -Dm644 src/windows-app-for-linux.desktop.256x256.png /app/share/icons/hicolor/256x256/apps/io.github.joshschools.WindowsAppForLinux.png
     sources:
       - type: dir
         path: ..
