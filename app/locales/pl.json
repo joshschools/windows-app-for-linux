@@ -1,0 +1,20 @@
+{
+  "tray.showPortal": "Pokaż portal",
+  "tray.openSessions": "Otwarte sesje:",
+  "tray.avdSession": "Sesja AVD",
+  "tray.quit": "Zakończ",
+  "tray.quitAndClear": "Zakończ i wyczyść sesję",
+
+  "menu.file": "Plik",
+  "menu.quit": "Zakończ",
+  "menu.view": "Widok",
+  "menu.reload": "Odśwież",
+  "menu.fullScreen": "Pełny ekran",
+  "menu.zoomIn": "Powiększ",
+  "menu.zoomOut": "Pomniejsz",
+  "menu.resetZoom": "Resetuj zoom",
+  "menu.devTools": "Narzędzia deweloperskie",
+  "menu.navigation": "Nawigacja",
+  "menu.back": "Wstecz",
+  "menu.forward": "Dalej"
+}

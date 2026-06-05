@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a9ae6"/>
+      <stop offset="100%" stop-color="#0053ba"/>
+    </linearGradient>
+    <clipPath id="tl"><rect x="48" y="48"  width="196" height="196" rx="12"/></clipPath>
+    <clipPath id="tr"><rect x="268" y="48"  width="196" height="196" rx="12"/></clipPath>
+    <clipPath id="bl"><rect x="48" y="268" width="196" height="196" rx="12"/></clipPath>
+    <clipPath id="br"><rect x="268" y="268" width="196" height="196" rx="12"/></clipPath>
+  </defs>
+
+  <rect width="512" height="512" rx="88" fill="url(#bg)"/>
+  <rect width="512" height="260" rx="88" fill="white" opacity="0.06"/>
+
+  <g clip-path="url(#tl)">
+      <!-- Flippers -->
+      <ellipse cx="148" cy="295" rx="36" ry="86" fill="white" opacity="0.85" transform="rotate(-14 148 295)"/>
+      <ellipse cx="364" cy="295" rx="36" ry="86" fill="white" opacity="0.85" transform="rotate(14 364 295)"/>
+      <!-- Head -->
+      <ellipse cx="256" cy="148" rx="80" ry="84" fill="#0d1117" stroke="white" stroke-width="6"/>
+      <!-- Body -->
+      <ellipse cx="256" cy="326" rx="122" ry="132" fill="#0d1117" stroke="white" stroke-width="6"/>
+      <!-- White belly -->
+      <ellipse cx="256" cy="334" rx="72" ry="96" fill="white"/>
+      <!-- White face patch -->
+      <ellipse cx="256" cy="156" rx="48" ry="52" fill="white"/>
+      <!-- Beak -->
+      <polygon points="238,196 274,196 256,228" fill="#f09000"/>
+      <!-- Eyes -->
+      <circle cx="232" cy="140" r="11" fill="#0d1117"/>
+      <circle cx="280" cy="140" r="11" fill="#0d1117"/>
+      <circle cx="235" cy="137" r="5" fill="white"/>
+      <circle cx="283" cy="137" r="5" fill="white"/>
+      <!-- Feet -->
+      <ellipse cx="208" cy="458" rx="42" ry="14" fill="#f09000" transform="rotate(-18 208 458)"/>
+      <ellipse cx="304" cy="458" rx="42" ry="14" fill="#f09000" transform="rotate(18 304 458)"/></g>
+  <g clip-path="url(#tr)">
+      <!-- Flippers -->
+      <ellipse cx="148" cy="295" rx="36" ry="86" fill="white" opacity="0.85" transform="rotate(-14 148 295)"/>
+      <ellipse cx="364" cy="295" rx="36" ry="86" fill="white" opacity="0.85" transform="rotate(14 364 295)"/>
+      <!-- Head -->
+      <ellipse cx="256" cy="148" rx="80" ry="84" fill="#0d1117" stroke="white" stroke-width="6"/>
+      <!-- Body -->
+      <ellipse cx="256" cy="326" rx="122" ry="132" fill="#0d1117" stroke="white" stroke-width="6"/>
+      <!-- White belly -->
+      <ellipse cx="256" cy="334" rx="72" ry="96" fill="white"/>
+      <!-- White face patch -->
+      <ellipse cx="256" cy="156" rx="48" ry="52" fill="white"/>
+      <!-- Beak -->
+      <polygon points="238,196 274,196 256,228" fill="#f09000"/>
+      <!-- Eyes -->
+      <circle cx="232" cy="140" r="11" fill="#0d1117"/>
+      <circle cx="280" cy="140" r="11" fill="#0d1117"/>
+      <circle cx="235" cy="137" r="5" fill="white"/>
+      <circle cx="283" cy="137" r="5" fill="white"/>
+      <!-- Feet -->
+      <ellipse cx="208" cy="458" rx="42" ry="14" fill="#f09000" transform="rotate(-18 208 458)"/>
+      <ellipse cx="304" cy="458" rx="42" ry="14" fill="#f09000" transform="rotate(18 304 458)"/></g>
+  <g clip-path="url(#bl)">
+      <!-- Flippers -->
+      <ellipse cx="148" cy="295" rx="36" ry="86" fill="white" opacity="0.85" transform="rotate(-14 148 295)"/>
+      <ellipse cx="364" cy="295" rx="36" ry="86" fill="white" opacity="0.85" transform="rotate(14 364 295)"/>
+      <!-- Head -->
+      <ellipse cx="256" cy="148" rx="80" ry="84" fill="#0d1117" stroke="white" stroke-width="6"/>
+      <!-- Body -->
+      <ellipse cx="256" cy="326" rx="122" ry="132" fill="#0d1117" stroke="white" stroke-width="6"/>
+      <!-- White belly -->
+      <ellipse cx="256" cy="334" rx="72" ry="96" fill="white"/>
+      <!-- White face patch -->
+      <ellipse cx="256" cy="156" rx="48" ry="52" fill="white"/>
+      <!-- Beak -->
+      <polygon points="238,196 274,196 256,228" fill="#f09000"/>
+      <!-- Eyes -->
+      <circle cx="232" cy="140" r="11" fill="#0d1117"/>
+      <circle cx="280" cy="140" r="11" fill="#0d1117"/>
+      <circle cx="235" cy="137" r="5" fill="white"/>
+      <circle cx="283" cy="137" r="5" fill="white"/>
+      <!-- Feet -->
+      <ellipse cx="208" cy="458" rx="42" ry="14" fill="#f09000" transform="rotate(-18 208 458)"/>
+      <ellipse cx="304" cy="458" rx="42" ry="14" fill="#f09000" transform="rotate(18 304 458)"/></g>
+  <g clip-path="url(#br)">
+      <!-- Flippers -->
+      <ellipse cx="148" cy="295" rx="36" ry="86" fill="white" opacity="0.85" transform="rotate(-14 148 295)"/>
+      <ellipse cx="364" cy="295" rx="36" ry="86" fill="white" opacity="0.85" transform="rotate(14 364 295)"/>
+      <!-- Head -->
+      <ellipse cx="256" cy="148" rx="80" ry="84" fill="#0d1117" stroke="white" stroke-width="6"/>
+      <!-- Body -->
+      <ellipse cx="256" cy="326" rx="122" ry="132" fill="#0d1117" stroke="white" stroke-width="6"/>
+      <!-- White belly -->
+      <ellipse cx="256" cy="334" rx="72" ry="96" fill="white"/>
+      <!-- White face patch -->
+      <ellipse cx="256" cy="156" rx="48" ry="52" fill="white"/>
+      <!-- Beak -->
+      <polygon points="238,196 274,196 256,228" fill="#f09000"/>
+      <!-- Eyes -->
+      <circle cx="232" cy="140" r="11" fill="#0d1117"/>
+      <circle cx="280" cy="140" r="11" fill="#0d1117"/>
+      <circle cx="235" cy="137" r="5" fill="white"/>
+      <circle cx="283" cy="137" r="5" fill="white"/>
+      <!-- Feet -->
+      <ellipse cx="208" cy="458" rx="42" ry="14" fill="#f09000" transform="rotate(-18 208 458)"/>
+      <ellipse cx="304" cy="458" rx="42" ry="14" fill="#f09000" transform="rotate(18 304 458)"/></g>
+</svg>

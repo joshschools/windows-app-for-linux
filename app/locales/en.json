@@ -1,0 +1,20 @@
+{
+  "tray.showPortal": "Show portal",
+  "tray.openSessions": "Open sessions:",
+  "tray.avdSession": "AVD Session",
+  "tray.quit": "Quit",
+  "tray.quitAndClear": "Quit and clear session",
+
+  "menu.file": "File",
+  "menu.quit": "Quit",
+  "menu.view": "View",
+  "menu.reload": "Reload",
+  "menu.fullScreen": "Full Screen",
+  "menu.zoomIn": "Zoom In",
+  "menu.zoomOut": "Zoom Out",
+  "menu.resetZoom": "Reset Zoom",
+  "menu.devTools": "Developer Tools",
+  "menu.navigation": "Navigation",
+  "menu.back": "Back",
+  "menu.forward": "Forward"
+}
