@@ -97,6 +97,23 @@ const logger = {
   debug: (...args) => log(LOG_LEVELS.DEBUG, ...args)
 };
 
+// Linux display: disable Vulkan (reduces Wayland+Vulkan console spam). Do not force
+// X11 on a Wayland desktop — that runs through XWayland and often crashes the GPU
+// process (exit 139). Set ELECTRON_OZONE_PLATFORM=x11|wayland to override; on X11
+// sessions under Wayland also set WINDOWS_APP_DISABLE_GPU=1 if GPU still crashes.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('disable-features', 'Vulkan');
+  const platform = process.env.ELECTRON_OZONE_PLATFORM;
+  if (platform === 'x11') {
+    app.commandLine.appendSwitch('ozone-platform', 'x11');
+    if (process.env.WAYLAND_DISPLAY && process.env.WINDOWS_APP_DISABLE_GPU !== '0') {
+      app.commandLine.appendSwitch('disable-gpu');
+    }
+  } else if (platform === 'wayland') {
+    app.commandLine.appendSwitch('ozone-platform', 'wayland');
+  }
+}
+
 // Add command line switches to make Electron behave more like Edge browser
 // These are flags that Edge/Chrome use by default
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
@@ -400,21 +417,6 @@ function showSettingsDialog() {
   </div>
   
   <div class="setting-group">
-    <label>Default Window Size:</label>
-    <div style="display: flex; gap: 10px; align-items: center;">
-      <div style="flex: 1;">
-        <label for="windowWidth" style="font-size: 12px; margin-bottom: 3px;">Width:</label>
-        <input type="number" id="windowWidth" value="${appConfig.windowWidth}" min="400" max="3840" style="width: 100%;">
-      </div>
-      <div style="flex: 1;">
-        <label for="windowHeight" style="font-size: 12px; margin-bottom: 3px;">Height:</label>
-        <input type="number" id="windowHeight" value="${appConfig.windowHeight}" min="300" max="2160" style="width: 100%;">
-      </div>
-    </div>
-    <div class="description">The default size of the main window when the application starts. Changes will apply to new windows.</div>
-  </div>
-  
-  <div class="setting-group">
     <label>Data Management:</label>
     <button class="danger" onclick="clearCache()">Clear Cookies and Cache</button>
     <div class="description">This will clear all stored cookies, cache, and local storage. You will need to log in again.</div>
@@ -459,20 +461,12 @@ function showSettingsDialog() {
       const cloudEnvironment = envSelect.value;
       const connectionUrl = urlField.value;
       const userAgent = document.getElementById('userAgent').value;
-      const windowWidth = parseInt(document.getElementById('windowWidth').value);
-      const windowHeight = parseInt(document.getElementById('windowHeight').value);
       const settings = { cloudEnvironment };
       if (connectionUrl && connectionUrl.trim()) {
         settings.connectionUrl = connectionUrl.trim();
       }
       if (userAgent && userAgent.trim()) {
         settings.userAgent = userAgent.trim();
-      }
-      if (windowWidth && windowWidth >= 400 && windowWidth <= 3840) {
-        settings.windowWidth = windowWidth;
-      }
-      if (windowHeight && windowHeight >= 300 && windowHeight <= 2160) {
-        settings.windowHeight = windowHeight;
       }
       settings.clearSessionOnExit = document.getElementById('clearSessionOnExit').checked;
       // Use the exposed API from preload script
@@ -505,6 +499,8 @@ function showSettingsDialog() {
     // sanitizeSettings() also forces connectionUrl to the environment's URL for
     // any non-custom environment, so a forged URL can't repoint a known cloud.
     const settings = sanitizeSettings(rawSettings);
+    const prevConnectionUrl = appConfig.connectionUrl;
+    const prevUserAgent = appConfig.userAgent;
     if (settings.cloudEnvironment) {
       appConfig.cloudEnvironment = settings.cloudEnvironment;
       logger.info('Cloud environment set to:', settings.cloudEnvironment);
@@ -518,14 +514,6 @@ function showSettingsDialog() {
       session.defaultSession.setUserAgent(appConfig.userAgent);
       logger.info('User-Agent updated to:', appConfig.userAgent);
     }
-    if (settings.windowWidth) {
-      appConfig.windowWidth = settings.windowWidth;
-      logger.info('Default window width updated to:', appConfig.windowWidth);
-    }
-    if (settings.windowHeight) {
-      appConfig.windowHeight = settings.windowHeight;
-      logger.info('Default window height updated to:', appConfig.windowHeight);
-    }
     if (typeof settings.clearSessionOnExit === 'boolean') {
       appConfig.clearSessionOnExit = settings.clearSessionOnExit;
       logger.info('Clear session on exit:', settings.clearSessionOnExit);
@@ -533,13 +521,11 @@ function showSettingsDialog() {
     saveConfig();
     logger.info('Settings saved:', settings);
     if (mainWindow && !mainWindow.isDestroyed()) {
-      if (settings.connectionUrl) {
+      if (appConfig.connectionUrl !== prevConnectionUrl) {
         mainWindow.loadURL(appConfig.connectionUrl);
-      } else if (settings.userAgent) {
-        // If only User-Agent changed, reload the current page
+      } else if (appConfig.userAgent !== prevUserAgent) {
         mainWindow.reload();
       }
-      // Note: Window size changes will apply to new windows, not the current one
     }
   };
 
@@ -926,9 +912,6 @@ function setupAuthPopup(popupWin) {
 function setupRdpWindow(rdpWindow, url) {
   logger.debug('[RDP Window] Setup, ID:', rdpWindow.id);
 
-  const { width, height } = getRdpWindowDimensions(getRdpDisplayWorkArea());
-  rdpWindow.setContentSize(width, height);
-
   rdpWindow.webContents.setUserAgent(appConfig.userAgent);
   rdpWindow.webContents.setWindowOpenHandler(handleWindowOpenRequest);
   applyRdpNavigationGuards(rdpWindow);
@@ -1058,10 +1041,12 @@ function setupRdpWindow(rdpWindow, url) {
 }
 
 function createWindow(isFullscreen = false) {
+  const { width, height } = getRdpWindowDimensions(getRdpDisplayWorkArea());
   // Create the browser window
   mainWindow = new BrowserWindow({
-    width: appConfig.windowWidth,
-    height: appConfig.windowHeight,
+    width,
+    height,
+    useContentSize: true,
     fullscreen: isFullscreen,
     fullscreenable: true, // Allow fullscreen
     webPreferences: {
@@ -1102,7 +1087,8 @@ function createWindow(isFullscreen = false) {
     mainWindow.show();
     // Ensure menu bar is always visible
     mainWindow.setMenuBarVisibility(true);
-    // Don't force fullscreen for main window
+    setTimeout(() => scheduleRendererResize(mainWindow), 250);
+    setTimeout(() => scheduleRendererResize(mainWindow), 1000);
   });
 
   // DevTools disabled by default - can be toggled via menu
@@ -1116,9 +1102,18 @@ function createWindow(isFullscreen = false) {
     logger.debug('[Main Window] Navigated in page to:', navigationUrl);
   });
 
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    // ERR_ABORTED (-3) is normal when a navigation is superseded (e.g. loadURL while loading).
+    if (errorCode === -3) {
+      logger.debug('[Main Window] Navigation aborted:', validatedURL);
+      return;
+    }
+    if (isMainFrame === false) return;
     logger.error('[Main Window] Failed to load:', validatedURL, errorCode, errorDescription);
   });
+
+  attachRdpResizeHandling(mainWindow);
+  mainWindow.webContents.on('did-finish-load', () => scheduleRendererResize(mainWindow));
 
   // Handle window closed
   mainWindow.on('close', (event) => {

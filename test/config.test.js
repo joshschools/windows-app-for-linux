@@ -9,7 +9,6 @@ const {
   DEFAULT_CONFIG,
   CLOUD_ENVIRONMENTS,
   LOG_LEVELS,
-  WINDOW_BOUNDS,
   isValidCloudEnvironment,
   urlForEnvironment
 } = require('../src/config');
@@ -18,15 +17,11 @@ test('sanitizeSettings: keeps valid values', () => {
   const out = sanitizeSettings({
     connectionUrl: 'https://windows.cloud.microsoft/',
     userAgent: 'Custom UA',
-    windowWidth: 1280,
-    windowHeight: 720,
     logLevel: LOG_LEVELS.DEBUG
   });
   assert.deepEqual(out, {
     connectionUrl: 'https://windows.cloud.microsoft/',
     userAgent: 'Custom UA',
-    windowWidth: 1280,
-    windowHeight: 720,
     logLevel: LOG_LEVELS.DEBUG
   });
 });
@@ -37,36 +32,19 @@ test('sanitizeSettings: trims strings and drops empty/whitespace-only ones', () 
   assert.ok(!('userAgent' in out));
 });
 
-test('sanitizeSettings: rejects out-of-range window sizes', () => {
-  const tooSmall = sanitizeSettings({ windowWidth: 10, windowHeight: 10 });
-  assert.deepEqual(tooSmall, {});
-  const tooBig = sanitizeSettings({
-    windowWidth: WINDOW_BOUNDS.width.max + 1,
-    windowHeight: WINDOW_BOUNDS.height.max + 1
-  });
-  assert.deepEqual(tooBig, {});
-});
-
-test('sanitizeSettings: accepts boundary window sizes and rounds floats', () => {
-  const out = sanitizeSettings({
-    windowWidth: WINDOW_BOUNDS.width.min,
-    windowHeight: WINDOW_BOUNDS.height.max
-  });
-  assert.equal(out.windowWidth, WINDOW_BOUNDS.width.min);
-  assert.equal(out.windowHeight, WINDOW_BOUNDS.height.max);
-  assert.equal(sanitizeSettings({ windowWidth: 1000.7 }).windowWidth, 1001);
-});
-
-test('sanitizeSettings: coerces numeric strings (as the dialog sends them)', () => {
-  const out = sanitizeSettings({ windowWidth: '1600', windowHeight: '900' });
-  assert.equal(out.windowWidth, 1600);
-  assert.equal(out.windowHeight, 900);
-});
-
-test('sanitizeSettings: rejects NaN, non-numeric, and invalid log levels', () => {
-  assert.deepEqual(sanitizeSettings({ windowWidth: 'wide', windowHeight: NaN }), {});
+test('sanitizeSettings: rejects invalid log levels', () => {
   assert.deepEqual(sanitizeSettings({ logLevel: 99 }), {});
   assert.deepEqual(sanitizeSettings({ logLevel: 'DEBUG' }), {});
+});
+
+test('sanitizeSettings: ignores legacy window size keys', () => {
+  assert.deepEqual(sanitizeSettings({ windowWidth: 1024, windowHeight: 768 }), {});
+});
+
+test('mergeConfig: ignores legacy window size keys from saved config', () => {
+  const merged = mergeConfig(DEFAULT_CONFIG, { windowWidth: 800, windowHeight: 600 });
+  assert.ok(!('windowWidth' in merged));
+  assert.ok(!('windowHeight' in merged));
 });
 
 test('sanitizeSettings: tolerates non-object input', () => {
@@ -78,11 +56,9 @@ test('sanitizeSettings: tolerates non-object input', () => {
 
 test('mergeConfig: a malformed loaded value cannot clobber a good default', () => {
   const merged = mergeConfig(DEFAULT_CONFIG, {
-    windowWidth: -5,            // invalid -> ignored
     connectionUrl: '',          // empty -> ignored
     userAgent: 'My UA'          // valid -> applied
   });
-  assert.equal(merged.windowWidth, DEFAULT_CONFIG.windowWidth);
   assert.equal(merged.connectionUrl, DEFAULT_CONFIG.connectionUrl);
   assert.equal(merged.userAgent, 'My UA');
 });
@@ -90,7 +66,7 @@ test('mergeConfig: a malformed loaded value cannot clobber a good default', () =
 test('mergeConfig: does not mutate the base config', () => {
   const base = Object.assign({}, DEFAULT_CONFIG);
   const snapshot = JSON.stringify(base);
-  mergeConfig(base, { windowWidth: 1600 });
+  mergeConfig(base, { userAgent: 'Other UA' });
   assert.equal(JSON.stringify(base), snapshot);
 });
 

@@ -26,14 +26,14 @@ test('isPopupWindow: empty/missing features on default disposition', () => {
   assert.equal(isPopupWindow('', 'foreground-tab'), false);
 });
 
-test('getRdpWindowDimensions: uses work area with sane bounds', () => {
+test('getRdpWindowDimensions: uses full work area up to max bounds', () => {
   assert.deepEqual(getRdpWindowDimensions({ width: 2560, height: 1440 }), {
     width: 2560,
     height: 1440
   });
   assert.deepEqual(getRdpWindowDimensions({ width: 400, height: 300 }), {
-    width: 800,
-    height: 600
+    width: 400,
+    height: 300
   });
 });
 
@@ -42,5 +42,6 @@ test('buildRendererResizeNotifyScript: embeds content dimensions', () => {
   const script = buildRendererResizeNotifyScript(1920, 1080);
   assert.match(script, /1920/);
   assert.match(script, /1080/);
+  assert.match(script, /viewport/);
   assert.match(script, /rdp-host-resize/);
 });

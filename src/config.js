@@ -32,26 +32,14 @@ const LOG_LEVELS = {
   DEBUG: 3
 };
 
-const WINDOW_BOUNDS = {
-  width: { min: 400, max: 3840 },
-  height: { min: 300, max: 2160 }
-};
-
 const DEFAULT_CONFIG = {
   logLevel: LOG_LEVELS.INFO,
   cloudEnvironment: 'commercial',
   connectionUrl: DEFAULT_CONNECTION_URL,
   userAgent: DEFAULT_USER_AGENT,
-  windowWidth: 1024,
-  windowHeight: 768,
   clearSessionOnExit: false
 };
 
-function inRange(n, min, max) {
-  return typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max;
-}
-
-// True for a known cloud-environment key.
 function isValidCloudEnvironment(env) {
   return typeof env === 'string' && Object.prototype.hasOwnProperty.call(CLOUD_ENVIRONMENTS, env);
 }
@@ -79,14 +67,6 @@ function sanitizeSettings(input) {
   if (typeof input.userAgent === 'string' && input.userAgent.trim()) {
     out.userAgent = input.userAgent.trim();
   }
-  const w = Number(input.windowWidth);
-  if (inRange(w, WINDOW_BOUNDS.width.min, WINDOW_BOUNDS.width.max)) {
-    out.windowWidth = Math.round(w);
-  }
-  const h = Number(input.windowHeight);
-  if (inRange(h, WINDOW_BOUNDS.height.min, WINDOW_BOUNDS.height.max)) {
-    out.windowHeight = Math.round(h);
-  }
   if (Object.values(LOG_LEVELS).includes(input.logLevel)) {
     out.logLevel = input.logLevel;
   }
@@ -113,7 +93,6 @@ module.exports = {
   DEFAULT_CONNECTION_URL,
   CLOUD_ENVIRONMENTS,
   LOG_LEVELS,
-  WINDOW_BOUNDS,
   DEFAULT_CONFIG,
   isValidCloudEnvironment,
   urlForEnvironment,

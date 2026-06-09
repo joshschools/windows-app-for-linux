@@ -5,7 +5,8 @@
   "description": "Unofficial client for Windows App - Access Azure Virtual Desktops on Linux via Windows App web access",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron src/main.js",
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "start:x11": "env -u ELECTRON_RUN_AS_NODE ELECTRON_OZONE_PLATFORM=x11 WINDOWS_APP_DISABLE_GPU=1 electron .",
     "test": "node --test",
     "build": "electron-builder",
     "build:appimage": "electron-builder --linux AppImage",

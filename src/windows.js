@@ -12,11 +12,12 @@ function isPopupWindow(features, disposition) {
   return false;
 }
 
-// Initial RDP window size from the monitor work area (excludes panels/taskbar).
+// Initial window size from the monitor work area (excludes panels/taskbar).
 function getRdpWindowDimensions(workArea) {
-  const width = Math.max(800, Math.min(workArea.width, 3840));
-  const height = Math.max(600, Math.min(workArea.height, 2160));
-  return { width, height };
+  return {
+    width: Math.min(workArea.width, 3840),
+    height: Math.min(workArea.height, 2160)
+  };
 }
 
 // Build JS injected into the RDP renderer so the AVD web client re-negotiates
@@ -26,6 +27,11 @@ function buildRendererResizeNotifyScript(contentWidth, contentHeight) {
   const h = Math.max(0, Math.round(Number(contentHeight) || 0));
   return `
     (function() {
+      var w = ${w}, h = ${h};
+      var vp = document.querySelector('meta[name="viewport"]');
+      if (vp) {
+        vp.setAttribute('content', 'width=' + w + ', height=' + h + ', initial-scale=1');
+      }
       window.dispatchEvent(new Event('resize'));
       window.dispatchEvent(new Event('orientationchange'));
       if (window.visualViewport) {
