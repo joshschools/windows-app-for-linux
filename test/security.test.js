@@ -10,12 +10,26 @@ const {
   ALLOWED_NAV_HOST_SUFFIXES
 } = require('../src/security');
 
-test('isTrustedOrigin: grants exact and subdomain Microsoft hosts', () => {
+test('isTrustedOrigin: grants exact and subdomain Microsoft-operated hosts', () => {
   assert.equal(isTrustedOrigin('https://microsoft.com/'), true);
   assert.equal(isTrustedOrigin('https://windows.cloud.microsoft/#/devices'), true);
   assert.equal(isTrustedOrigin('https://login.microsoftonline.com/'), true);
-  assert.equal(isTrustedOrigin('https://foo.bar.azure.com/'), true);
-  assert.equal(isTrustedOrigin('https://something.windows.net/'), true);
+  assert.equal(isTrustedOrigin('https://rdweb.wvd.microsoft.com/'), true);
+});
+
+test('isTrustedOrigin: grants US government cloud (GCC High / DoD) hosts', () => {
+  assert.equal(isTrustedOrigin('https://login.microsoftonline.us/'), true);
+  assert.equal(isTrustedOrigin('https://rdweb.wvd.azure.us/arm/webclient/index.html'), true);
+  assert.equal(isTrustedOrigin('https://rdweb.wvd.microsoft.us/arm/webclient/index.html'), true);
+});
+
+test('isTrustedOrigin: does NOT trust customer-controllable Azure hosts', () => {
+  // The whole point of dropping bare windows.net / azure.com: anyone can host
+  // content on Azure Storage or a customer VM, so these must not be trusted.
+  assert.equal(isTrustedOrigin('https://attacker.blob.core.windows.net/'), false);
+  assert.equal(isTrustedOrigin('https://attacker.cloudapp.azure.com/'), false);
+  assert.equal(isTrustedOrigin('https://foo.bar.azure.com/'), false);
+  assert.equal(isTrustedOrigin('https://something.windows.net/'), false);
 });
 
 test('isTrustedOrigin: denies untrusted and look-alike hosts', () => {
@@ -24,6 +38,8 @@ test('isTrustedOrigin: denies untrusted and look-alike hosts', () => {
   assert.equal(isTrustedOrigin('https://microsoft.com.evil.com/'), false);
   assert.equal(isTrustedOrigin('https://notmicrosoft.com/'), false);
   assert.equal(isTrustedOrigin('https://fakemicrosoft.com/'), false);
+  // look-alike government hosts must also be rejected
+  assert.equal(isTrustedOrigin('https://wvd.azure.us.evil.com/'), false);
 });
 
 test('isTrustedOrigin: case-insensitive host matching', () => {

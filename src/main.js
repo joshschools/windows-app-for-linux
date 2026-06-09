@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session, shell, Menu, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, session, shell, Menu, dialog, ipcMain, screen } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -8,6 +8,7 @@ const { isTrustedOrigin, isAllowedNavigationUrl } = require('./security');
 const {
   DEFAULT_USER_AGENT,
   DEFAULT_CONNECTION_URL,
+  CLOUD_ENVIRONMENTS,
   LOG_LEVELS,
   DEFAULT_CONFIG,
   sanitizeSettings,
@@ -15,6 +16,7 @@ const {
 } = require('./config');
 const { isForceCloseShortcut, isFullscreenToggle, isDevToolsToggle } = require('./shortcuts');
 const { shouldRetryCrash } = require('./recovery');
+const { isPopupWindow, getRdpWindowDimensions, buildRendererResizeNotifyScript } = require('./windows');
 
 // Set userData path to a persistent location
 // In snaps, use SNAP_USER_DATA if available, otherwise use standard XDG config directory
@@ -58,6 +60,11 @@ function saveConfig() {
   } catch (err) {
     log(LOG_LEVELS.ERROR, 'Error saving configuration:', err.message);
   }
+}
+
+async function clearSessionData() {
+  await session.defaultSession.clearCache();
+  await session.defaultSession.clearStorageData();
 }
 
 // Logging function with levels
@@ -133,6 +140,48 @@ process.on('unhandledRejection', (reason, promise) => {
 
 let mainWindow;
 const windows = new Set(); // Track all windows for menu updates
+const rdpResizeWindows = new WeakSet();
+const resizeNotifyTimers = new Map();
+
+function notifyRendererResize(win) {
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+  const bounds = win.getContentBounds();
+  win.webContents.setZoomFactor(1);
+  const script = buildRendererResizeNotifyScript(bounds.width, bounds.height);
+  win.webContents.executeJavaScript(script).catch(() => {});
+}
+
+function scheduleRendererResize(win) {
+  if (!win || win.isDestroyed()) return;
+  const id = win.id;
+  if (resizeNotifyTimers.has(id)) clearTimeout(resizeNotifyTimers.get(id));
+  resizeNotifyTimers.set(id, setTimeout(() => {
+    resizeNotifyTimers.delete(id);
+    notifyRendererResize(win);
+  }, 120));
+}
+
+function attachRdpResizeHandling(win) {
+  rdpResizeWindows.add(win);
+  const schedule = () => scheduleRendererResize(win);
+  win.on('resize', schedule);
+  win.on('will-resize', schedule);
+  win.on('maximize', schedule);
+  win.on('unmaximize', schedule);
+  win.on('enter-full-screen', () => setTimeout(schedule, 200));
+  win.on('leave-full-screen', () => setTimeout(schedule, 200));
+  win.on('closed', () => {
+    rdpResizeWindows.delete(win);
+    resizeNotifyTimers.delete(win.id);
+  });
+}
+
+function getRdpDisplayWorkArea() {
+  const refBounds = mainWindow && !mainWindow.isDestroyed()
+    ? mainWindow.getBounds()
+    : screen.getPrimaryDisplay().bounds;
+  return screen.getDisplayMatching(refBounds).workAreaSize;
+}
 
 // About dialog
 function showAboutDialog() {
@@ -153,6 +202,7 @@ function showAboutDialog() {
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
   <title>About</title>
   <style>
     body {
@@ -217,9 +267,14 @@ function showSettingsDialog() {
   // one to disk at runtime.
   const preloadPath = path.join(__dirname, 'settings-preload.js');
 
+  // Data for the cloud-environment selector. Serialized into the page so the
+  // dropdown can auto-fill the connection URL client-side.
+  const cloudEnvsJson = JSON.stringify(CLOUD_ENVIRONMENTS);
+  const currentEnv = appConfig.cloudEnvironment || 'commercial';
+
   const settingsWindow = new BrowserWindow({
     width: 700,
-    height: 650,
+    height: 680,
     parent: mainWindow,
     modal: true,
     resizable: false,
@@ -235,6 +290,7 @@ function showSettingsDialog() {
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
   <title>Settings</title>
   <style>
     body {
@@ -313,12 +369,23 @@ function showSettingsDialog() {
 </head>
 <body>
   <h2>Settings</h2>
-  
+
+  <div class="setting-group">
+    <label for="cloudEnvironment">Cloud Environment:</label>
+    <select id="cloudEnvironment" onchange="onEnvChange()" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px; font-size: 14px; box-sizing: border-box;">
+      <option value="commercial">Commercial</option>
+      <option value="gcchigh">GCC High</option>
+      <option value="dod">DoD</option>
+      <option value="custom">Custom</option>
+    </select>
+    <div class="description">Selects the Microsoft cloud endpoint. Choose Custom to enter your own URL.</div>
+  </div>
+
   <div class="setting-group">
     <label for="connectionUrl">Default Connection Address:</label>
     <input type="url" id="connectionUrl" value="${appConfig.connectionUrl.replace(/"/g, '&quot;').replace(/'/g, '&#39;')}" placeholder="https://windows.cloud.microsoft/#/devices">
-    <div class="description">The URL to load when the application starts.</div>
-    <div class="warning">
+    <div class="description">The URL to load when the application starts. Set automatically by the environment selector above (editable only for Custom).</div>
+    <div class="warning" id="customWarning" style="display:none;">
       <strong>Warning:</strong> Changing this address may cause the application to not work correctly. Only modify if you know what you're doing.
     </div>
   </div>
@@ -351,6 +418,11 @@ function showSettingsDialog() {
     <label>Data Management:</label>
     <button class="danger" onclick="clearCache()">Clear Cookies and Cache</button>
     <div class="description">This will clear all stored cookies, cache, and local storage. You will need to log in again.</div>
+    <label style="display: flex; align-items: center; gap: 8px; margin-top: 12px; font-weight: normal;">
+      <input type="checkbox" id="clearSessionOnExit" ${appConfig.clearSessionOnExit ? 'checked' : ''}>
+      Clear cookies and cache when exiting the application
+    </label>
+    <div class="description">When enabled, all session data is wiped on quit so the next launch starts signed out.</div>
   </div>
   
   <div class="button-group">
@@ -361,13 +433,35 @@ function showSettingsDialog() {
   <script>
     // Use the exposed electronAPI from preload script instead of require('electron')
     // electronAPI is exposed via contextBridge in the preload script
-    
+    const ENVS = ${cloudEnvsJson};
+    const envSelect = document.getElementById('cloudEnvironment');
+    const urlField = document.getElementById('connectionUrl');
+    const customWarning = document.getElementById('customWarning');
+
+    // Initialise to the current saved environment.
+    envSelect.value = '${currentEnv}';
+    updateUrlField('${currentEnv}');
+
+    function onEnvChange() {
+      updateUrlField(envSelect.value);
+    }
+
+    function updateUrlField(env) {
+      const isCustom = env === 'custom';
+      urlField.disabled = !isCustom;
+      customWarning.style.display = isCustom ? 'block' : 'none';
+      if (!isCustom && ENVS[env] && ENVS[env].url) {
+        urlField.value = ENVS[env].url;
+      }
+    }
+
     function saveSettings() {
-      const connectionUrl = document.getElementById('connectionUrl').value;
+      const cloudEnvironment = envSelect.value;
+      const connectionUrl = urlField.value;
       const userAgent = document.getElementById('userAgent').value;
       const windowWidth = parseInt(document.getElementById('windowWidth').value);
       const windowHeight = parseInt(document.getElementById('windowHeight').value);
-      const settings = {};
+      const settings = { cloudEnvironment };
       if (connectionUrl && connectionUrl.trim()) {
         settings.connectionUrl = connectionUrl.trim();
       }
@@ -380,10 +474,9 @@ function showSettingsDialog() {
       if (windowHeight && windowHeight >= 300 && windowHeight <= 2160) {
         settings.windowHeight = windowHeight;
       }
-      if (Object.keys(settings).length > 0) {
-        // Use the exposed API from preload script
-        window.electronAPI.send('save-settings', settings);
-      }
+      settings.clearSessionOnExit = document.getElementById('clearSessionOnExit').checked;
+      // Use the exposed API from preload script
+      window.electronAPI.send('save-settings', settings);
       window.close();
     }
     
@@ -409,7 +502,13 @@ function showSettingsDialog() {
   // Handle IPC messages from settings window
   const saveHandler = (event, rawSettings) => {
     // Re-validate in the main process; never trust values straight off IPC.
+    // sanitizeSettings() also forces connectionUrl to the environment's URL for
+    // any non-custom environment, so a forged URL can't repoint a known cloud.
     const settings = sanitizeSettings(rawSettings);
+    if (settings.cloudEnvironment) {
+      appConfig.cloudEnvironment = settings.cloudEnvironment;
+      logger.info('Cloud environment set to:', settings.cloudEnvironment);
+    }
     if (settings.connectionUrl) {
       appConfig.connectionUrl = settings.connectionUrl;
     }
@@ -427,6 +526,10 @@ function showSettingsDialog() {
       appConfig.windowHeight = settings.windowHeight;
       logger.info('Default window height updated to:', appConfig.windowHeight);
     }
+    if (typeof settings.clearSessionOnExit === 'boolean') {
+      appConfig.clearSessionOnExit = settings.clearSessionOnExit;
+      logger.info('Clear session on exit:', settings.clearSessionOnExit);
+    }
     saveConfig();
     logger.info('Settings saved:', settings);
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -442,10 +545,7 @@ function showSettingsDialog() {
 
   const clearCacheHandler = async () => {
     try {
-      await session.defaultSession.clearCache();
-      // clearStorageData() (no options) already removes cookies, cache,
-      // localStorage, IndexedDB, etc., so no manual cookie loop is needed.
-      await session.defaultSession.clearStorageData();
+      await clearSessionData();
       logger.info('Cache and cookies cleared');
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.reload();
@@ -648,12 +748,18 @@ function attachFullscreenMenuToggle(win) {
   win.setMenuBarVisibility(true);
   win.on('enter-full-screen', () => {
     setTimeout(() => {
-      if (!win.isDestroyed()) win.setMenuBarVisibility(false);
+      if (!win.isDestroyed()) {
+        win.setMenuBarVisibility(false);
+        if (rdpResizeWindows.has(win)) scheduleRendererResize(win);
+      }
     }, 100);
   });
   win.on('leave-full-screen', () => {
     setTimeout(() => {
-      if (!win.isDestroyed()) win.setMenuBarVisibility(true);
+      if (!win.isDestroyed()) {
+        win.setMenuBarVisibility(true);
+        if (rdpResizeWindows.has(win)) scheduleRendererResize(win);
+      }
     }, 100);
   });
 }
@@ -667,7 +773,10 @@ function attachWindowKeyShortcuts(win, { allowForceClose = false } = {}) {
     if (isFullscreenToggle(input)) {
       win.setFullScreen(!win.isFullScreen());
       setTimeout(() => {
-        if (!win.isDestroyed()) win.setMenuBarVisibility(!win.isFullScreen());
+        if (!win.isDestroyed()) {
+          win.setMenuBarVisibility(!win.isFullScreen());
+          if (rdpResizeWindows.has(win)) scheduleRendererResize(win);
+        }
       }, 100);
     } else if (isDevToolsToggle(input)) {
       if (win.webContents.isDevToolsOpened()) {
@@ -702,6 +811,252 @@ function installRequestHeaderRewrite() {
   });
 }
 
+// Minimal early page shim. Some Windows App web client builds reference a global
+// `dragEvent` that does not exist outside their expected environment; define it
+// before page scripts run. Injected once per navigation (did-start-loading).
+// NOTE: we intentionally no longer override navigator.permissions.query or
+// install blanket error/unhandledrejection swallowers here - the native
+// permission handler already grants what the client needs, and silently
+// preventing every page error hid real (including security-relevant) failures.
+const EARLY_PAGE_SHIM = `
+  (function() {
+    if (typeof window.dragEvent === 'undefined') {
+      try {
+        Object.defineProperty(window, 'dragEvent', {
+          value: null, writable: true, configurable: true, enumerable: false
+        });
+      } catch (e) { /* ignore */ }
+    }
+  })();
+`;
+
+// BrowserWindow options passed to Electron when a page calls window.open().
+// action:'allow' is required so window.open() returns a valid reference; with
+// action:'deny' the Windows App web client sees null and treats auth as blocked.
+function buildWindowOpenOptions(popup) {
+  const sharedSession = { session: session.defaultSession };
+  if (popup) {
+    return {
+      width: 500,
+      height: 700,
+      show: false,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+        webSecurity: true,
+        ...sharedSession
+      }
+    };
+  }
+  const { width, height } = getRdpWindowDimensions(getRdpDisplayWorkArea());
+  return {
+    width,
+    height,
+    useContentSize: true,
+    fullscreen: false,
+    fullscreenable: true,
+    backgroundColor: '#1e1e1e',
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      webSecurity: true,
+      permissions: ['camera', 'microphone', 'notifications'],
+      ...sharedSession,
+      devTools: false,
+      backgroundThrottling: false,
+      offscreen: false,
+      enableWebSQL: false,
+      enableBlinkFeatures: 'SharedArrayBuffer',
+      // SECURITY TRADEOFF: sandbox disabled for AVD/RDP shared memory. Guards
+      // below limit navigations to Microsoft hosts only.
+      sandbox: false,
+      v8CacheOptions: 'code'
+    }
+  };
+}
+
+function handleWindowOpenRequest({ url, features, disposition }) {
+  logger.debug('[Window open]', url, '|', disposition, '|', features);
+  const popup = isPopupWindow(features, disposition);
+  // RDP sessions must start on a Microsoft endpoint; auth popups may begin on
+  // Microsoft and redirect to any corporate IdP (e.g. sso.gdit.com).
+  if (!popup && !isAllowedNavigationUrl(url)) {
+    logger.warning('[Window open] Untrusted RDP URL opened externally:', url);
+    shell.openExternal(url).catch(err => {
+      logger.error('[Window open] Failed to open external URL:', err);
+    });
+    return { action: 'deny' };
+  }
+  return {
+    action: 'allow',
+    overrideBrowserWindowOptions: buildWindowOpenOptions(popup)
+  };
+}
+
+// Block top-frame navigations away from Microsoft hosts on RDP windows only
+// (sandbox:false). Main window and auth popups are NOT guarded — federated SSO
+// redirects to corporate IdPs (sso.gdit.com, Okta, ADFS, etc.) must stay in-app.
+function applyRdpNavigationGuards(win) {
+  win.webContents.on('will-navigate', (event, navigationUrl) => {
+    if (!isAllowedNavigationUrl(navigationUrl)) {
+      event.preventDefault();
+      logger.warning('[RDP Nav] Blocked navigation to untrusted URL:', navigationUrl);
+    }
+  });
+  win.webContents.on('will-redirect', (event, navigationUrl) => {
+    if (!isAllowedNavigationUrl(navigationUrl)) {
+      event.preventDefault();
+      logger.warning('[RDP Nav] Blocked redirect to untrusted URL:', navigationUrl);
+    }
+  });
+}
+
+// Minimal wiring for an auth/login popup created via action:'allow'.
+function setupAuthPopup(popupWin) {
+  popupWin.webContents.setUserAgent(appConfig.userAgent);
+  popupWin.setMenuBarVisibility(false);
+  popupWin.webContents.setWindowOpenHandler(handleWindowOpenRequest);
+  popupWin.once('ready-to-show', () => popupWin.show());
+  windows.add(popupWin);
+  popupWin.on('closed', () => windows.delete(popupWin));
+}
+
+// Wire up an RDP/AVD child window created via action:'allow' + did-create-window.
+function setupRdpWindow(rdpWindow, url) {
+  logger.debug('[RDP Window] Setup, ID:', rdpWindow.id);
+
+  const { width, height } = getRdpWindowDimensions(getRdpDisplayWorkArea());
+  rdpWindow.setContentSize(width, height);
+
+  rdpWindow.webContents.setUserAgent(appConfig.userAgent);
+  rdpWindow.webContents.setWindowOpenHandler(handleWindowOpenRequest);
+  applyRdpNavigationGuards(rdpWindow);
+
+  rdpWindow.webContents.on('did-create-window', (win, details) => {
+    if (isPopupWindow(details.features, details.disposition)) {
+      setupAuthPopup(win);
+    }
+  });
+
+  rdpWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    logger.error('[RDP Window] Load failed:', validatedURL, errorCode, errorDescription, 'mainFrame=', isMainFrame);
+    if (isMainFrame && errorCode !== -3) {
+      setTimeout(() => {
+        if (!rdpWindow.isDestroyed()) rdpWindow.reload();
+      }, 2000);
+    }
+  });
+
+  rdpWindow.webContents.on('did-finish-load', () => {
+    logger.debug('[RDP Window] Finished loading:', rdpWindow.webContents.getURL());
+    scheduleRendererResize(rdpWindow);
+  });
+
+  attachRdpResizeHandling(rdpWindow);
+
+  rdpWindow.webContents.on('did-start-loading', () => {
+    rdpWindow.webContents.executeJavaScript(EARLY_PAGE_SHIM).catch(() => {});
+  });
+
+  // Clear stale RDP client storage for this origin before loading (grey-screen
+  // fix on reconnect). Cookies are preserved so SSO stays valid.
+  const rdpOrigin = (() => { try { return new URL(url).origin; } catch { return null; } })();
+  rdpWindow.webContents.stop();
+  const doLoad = () => {
+    logger.debug('[RDP Window] Loading URL:', url);
+    rdpWindow.loadURL(url).catch(err => {
+      logger.error('[RDP Window] Error loading URL:', url, err);
+    });
+  };
+  if (rdpOrigin) {
+    rdpWindow.webContents.session.clearStorageData({
+      origin: rdpOrigin,
+      storages: ['localstorage', 'sessionstorage', 'indexdb', 'cachestorage', 'serviceworkers']
+    }).then(() => {
+      logger.debug('[RDP Window] Cleared stale storage for', rdpOrigin);
+      doLoad();
+    }).catch(() => doLoad());
+  } else {
+    doLoad();
+  }
+
+  let isClosing = false;
+  let forceCloseTimeout = null;
+
+  rdpWindow.on('close', () => {
+    try {
+      if (isClosing) return;
+      isClosing = true;
+      logger.debug('[RDP Window] Close event triggered');
+      try {
+        if (rdpWindow.webContents && !rdpWindow.webContents.isDestroyed() &&
+            rdpWindow.webContents.isDevToolsOpened()) {
+          rdpWindow.webContents.closeDevTools();
+        }
+      } catch (err) {
+        logger.error('[RDP Window] Error closing DevTools:', err);
+      }
+      forceCloseTimeout = setTimeout(() => {
+        if (!rdpWindow.isDestroyed()) {
+          logger.debug('[RDP Window] Force closing window (page prevented close)');
+          rdpWindow.destroy();
+        }
+      }, 2000);
+    } catch (err) {
+      logger.error('[RDP Window] Error in close handler:', err);
+      if (!rdpWindow.isDestroyed()) rdpWindow.destroy();
+    }
+  });
+
+  rdpWindow.on('closed', () => {
+    try {
+      if (forceCloseTimeout) {
+        clearTimeout(forceCloseTimeout);
+        forceCloseTimeout = null;
+      }
+      windows.delete(rdpWindow);
+      logger.debug('[RDP Window] Closed');
+    } catch (err) {
+      logger.error('[RDP Window] Error in closed handler:', err);
+    }
+  });
+
+  windows.add(rdpWindow);
+
+  rdpWindow.webContents.on('unresponsive', () => {
+    logger.warning('[RDP Window] Window became unresponsive (force close with Ctrl+W / Ctrl+Q)');
+  });
+
+  let crashRetries = 0;
+  const MAX_CRASH_RETRIES = 1;
+  rdpWindow.webContents.on('render-process-gone', (event, details) => {
+    logger.error('[RDP Window] Render process gone:', details.reason, 'exitCode=', details.exitCode);
+    if (shouldRetryCrash(details.reason, crashRetries, MAX_CRASH_RETRIES)) {
+      crashRetries++;
+      logger.debug(`Reloading crashed page (attempt ${crashRetries}/${MAX_CRASH_RETRIES})...`);
+      setTimeout(() => {
+        if (!rdpWindow.isDestroyed()) rdpWindow.reload();
+      }, 3000);
+    } else {
+      logger.error('Render process crashed and will not be reloaded again.');
+    }
+  });
+
+  rdpWindow.once('ready-to-show', () => {
+    logger.debug('[RDP Window] Ready to show');
+    rdpWindow.show();
+    rdpWindow.setMenuBarVisibility(true);
+    // Give the AVD client time to mount, then sync to the current window size.
+    setTimeout(() => scheduleRendererResize(rdpWindow), 250);
+    setTimeout(() => scheduleRendererResize(rdpWindow), 1000);
+    setTimeout(() => scheduleRendererResize(rdpWindow), 3000);
+  });
+
+  attachFullscreenMenuToggle(rdpWindow);
+  attachWindowKeyShortcuts(rdpWindow, { allowForceClose: true });
+}
+
 function createWindow(isFullscreen = false) {
   // Create the browser window
   mainWindow = new BrowserWindow({
@@ -726,444 +1081,17 @@ function createWindow(isFullscreen = false) {
   // Note: Permission handlers are now set up in app.whenReady() BEFORE createWindow()
   // This ensures they're active for all windows from the start
 
-  // Set up window open handler for new windows (remote desktop, etc.)
-  mainWindow.webContents.setWindowOpenHandler(({ url, frameName, features }) => {
-    logger.debug('=== NEW WINDOW REQUEST ===');
-    logger.debug('URL:', url);
-    logger.debug('Frame Name:', frameName);
-    logger.debug('Features:', features);
-    logger.debug('========================');
-
-    // Only open known Microsoft URLs in an in-app window (child windows are
-    // unsandboxed and media-permitted). Anything else goes to the external
-    // browser so an unexpected redirect can't run in a privileged window.
-    if (!isAllowedNavigationUrl(url)) {
-      logger.warning('[New Window] Untrusted URL opened externally:', url);
-      shell.openExternal(url).catch(err => {
-        logger.error('[New Window] Failed to open external URL:', err);
-      });
-      return { action: 'deny' };
+  // action:'allow' so window.open() returns a valid reference (required for SSO).
+  // did-create-window routes auth popups vs RDP sessions. Main window is NOT
+  // navigation-guarded so federated IdP redirects (e.g. sso.gdit.com) stay in-app.
+  mainWindow.webContents.setWindowOpenHandler(handleWindowOpenRequest);
+  mainWindow.webContents.on('did-create-window', (win, details) => {
+    logger.debug('[did-create-window]', details.url, '|', details.disposition);
+    if (isPopupWindow(details.features, details.disposition)) {
+      setupAuthPopup(win);
+    } else {
+      setupRdpWindow(win, details.url);
     }
-
-    // Create a new window for the remote desktop or other pages
-    // Use the same session as the main window to share cookies/auth
-    // This is critical for authentication to work across windows
-    const newWindow = new BrowserWindow({
-      width: 1920,
-      height: 1080,
-      fullscreen: false, // New windows open in windowed mode (can toggle with F11)
-      fullscreenable: true, // Allow fullscreen
-      backgroundColor: '#1e1e1e', // Dark background to avoid white flash
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true,
-        webSecurity: true,
-        permissions: ['camera', 'microphone', 'notifications'],
-        // Use the same session as the main window - this shares cookies/auth!
-        session: session.defaultSession,
-        // DevTools disabled by default - can be toggled via menu (Ctrl+Shift+I)
-        devTools: false,
-        // Additional stability options
-        backgroundThrottling: false,
-        offscreen: false,
-        // Enable browser-like features needed for RDP
-        enableWebSQL: false,
-        // Enable features that browsers have by default
-        enableBlinkFeatures: 'SharedArrayBuffer',
-        // SECURITY TRADEOFF: the Chromium sandbox is disabled here because the
-        // remote-desktop (RDP/AVD) client relies on shared memory that breaks
-        // under the sandbox in this Electron build. The risk is bounded by only
-        // ever loading trusted Microsoft URLs in this window (see the
-        // isAllowedNavigationUrl gate above); anything else is opened in the
-        // external browser instead. Revisit if the RDP client works sandboxed.
-        sandbox: false,
-        // Additional options that might help
-        v8CacheOptions: 'code'
-      },
-      show: false
-    });
-
-    logger.debug('New window created, ID:', newWindow.id);
-
-    // Set User-Agent on webContents as well
-    newWindow.webContents.setUserAgent(appConfig.userAgent);
-    logger.debug('User-Agent set on new window:', appConfig.userAgent);
-    
-    // Note: Permission handlers are already set up globally on session.defaultSession
-    // Since this window uses the same session, it will automatically use those handlers
-    
-    // Ensure cookies are shared - verify session is the same
-    const newSession = newWindow.webContents.session;
-    logger.debug('New window session ID:', newSession.id);
-    logger.debug('Default session ID:', session.defaultSession.id);
-    logger.debug('Sessions match:', newSession === session.defaultSession);
-    
-    // Ensure cookies are enabled and shared
-    newSession.cookies.get({}).then(cookies => {
-      logger.debug('Cookies in new window session:', cookies.length);
-    }).catch(err => {
-      logger.error('Error getting cookies:', err);
-    });
-
-    // Track all navigation events
-    newWindow.webContents.on('will-navigate', (event, navigationUrl) => {
-      logger.debug('[New Window] Will navigate to:', navigationUrl);
-    });
-
-    newWindow.webContents.on('did-navigate', (event, navigationUrl) => {
-      logger.debug('[New Window] Did navigate to:', navigationUrl);
-    });
-
-    newWindow.webContents.on('did-navigate-in-page', (event, navigationUrl) => {
-      logger.debug('[New Window] Did navigate in page to:', navigationUrl);
-    });
-
-    // Handle navigation errors
-    newWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-      logger.error('=== NEW WINDOW LOAD FAILED ===');
-      logger.error('URL:', validatedURL);
-      logger.error('Error Code:', errorCode);
-      logger.error('Description:', errorDescription);
-      logger.error('Is Main Frame:', isMainFrame);
-      logger.error('============================');
-      
-      // If it's a main frame failure, try to reload after a delay
-      if (isMainFrame && errorCode !== -3) { // -3 is ERR_ABORTED, don't reload on that
-        logger.debug('[New Window] Attempting to reload after load failure...');
-        setTimeout(() => {
-          if (!newWindow.isDestroyed()) {
-            newWindow.reload();
-          }
-        }, 2000);
-      }
-    });
-
-    // Handle console messages for debugging
-    newWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-      logger.debug(`[New Window Console ${level}]:`, message, `(${sourceId}:${line})`);
-    });
-
-    // Debug: Log when page starts loading
-    newWindow.webContents.on('did-start-loading', () => {
-      logger.debug('[New Window] Started loading:', newWindow.webContents.getURL());
-    });
-
-    // Debug: Log when page finishes loading
-    newWindow.webContents.on('did-finish-load', () => {
-      const url = newWindow.webContents.getURL();
-      logger.debug('[New Window] Finished loading:', url);
-      
-      // Check if page is blank (no content loaded)
-      setTimeout(() => {
-        if (!newWindow.isDestroyed()) {
-          newWindow.webContents.executeJavaScript(`
-            (function() {
-              const body = document.body;
-              if (body && body.innerHTML.trim() === '') {
-                console.warn('[New Window] Page appears to be blank - no content detected');
-                return true;
-              }
-              return false;
-            })();
-          `).then(isBlank => {
-            if (isBlank) {
-              logger.warning('[New Window] Blank page detected - attempting reload...');
-              setTimeout(() => {
-                if (!newWindow.isDestroyed()) {
-                  newWindow.reload();
-                }
-              }, 1000);
-            }
-          }).catch(() => {});
-        }
-      }, 2000);
-    });
-
-    // Debug: Log DOM ready
-    newWindow.webContents.on('dom-ready', () => {
-      logger.debug('[New Window] DOM ready:', newWindow.webContents.getURL());
-    });
-
-    // Debug: Log when page title changes
-    newWindow.webContents.on('page-title-updated', (event, title) => {
-      logger.debug('[New Window] Title updated:', title);
-    });
-
-    // Monitor network requests
-    newWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
-      if (details.resourceType === 'mainFrame' || details.resourceType === 'subFrame') {
-        logger.debug('[New Window] Request:', details.method, details.url);
-      }
-      callback({});
-    });
-
-    // Copy authentication cookies from main window before loading
-    // This ensures the new window has the same auth state
-    session.defaultSession.cookies.get({ domain: '.microsoft.com' }).then(cookies => {
-      logger.debug(`Copying ${cookies.length} cookies from main session to new window`);
-      // Cookies are already shared via same session, but this ensures they're available
-      return Promise.resolve();
-    }).catch(err => {
-      logger.error('Error getting cookies:', err);
-    });
-
-    // Load the URL in the new window
-    logger.debug('Loading URL in new window:', url);
-    newWindow.loadURL(url).catch(err => {
-      logger.error('=== ERROR LOADING URL ===');
-      logger.error('URL:', url);
-      logger.error('Error:', err);
-      logger.error('========================');
-    });
-
-    // Handle window close - allow closing but clean up first
-    let isClosing = false;
-    let forceCloseTimeout = null;
-    
-    newWindow.on('close', (event) => {
-      try {
-        if (isClosing) {
-          // Already closing, allow it
-          return;
-        }
-        
-        logger.debug('[New Window] Close event triggered');
-        isClosing = true;
-        
-        // Clean up DevTools if open
-        try {
-          if (newWindow.webContents && !newWindow.webContents.isDestroyed()) {
-            if (newWindow.webContents.isDevToolsOpened()) {
-              newWindow.webContents.closeDevTools();
-            }
-          }
-        } catch (err) {
-          logger.error('[New Window] Error closing DevTools:', err);
-        }
-        
-        // If the window doesn't close within 2 seconds, force close it
-        // This handles cases where the page prevents closing
-        forceCloseTimeout = setTimeout(() => {
-          if (!newWindow.isDestroyed()) {
-            logger.debug('[New Window] Force closing window (timeout - page prevented close)');
-            newWindow.destroy();
-          }
-        }, 2000); // 2 second timeout
-        
-        // Don't prevent close - allow the window to close normally
-        // If the page prevents it, the timeout will force close
-      } catch (err) {
-        logger.error('[New Window] Error in close handler:', err);
-        // On error, force close
-        if (!newWindow.isDestroyed()) {
-          newWindow.destroy();
-        }
-      }
-    });
-
-    // Handle window closed
-    newWindow.on('closed', () => {
-      try {
-        // Clear the force-close timeout if window closed normally
-        if (forceCloseTimeout) {
-          clearTimeout(forceCloseTimeout);
-          forceCloseTimeout = null;
-        }
-        windows.delete(newWindow);
-        logger.debug('[New Window] Closed');
-      } catch (err) {
-        logger.error('[New Window] Error in closed handler:', err);
-      }
-    });
-
-    windows.add(newWindow);
-
-    // Handle JavaScript errors
-    newWindow.webContents.on('uncaught-exception', (event, error) => {
-      logger.error('[New Window] Uncaught exception:', error);
-      // Prevent the error from crashing the app
-      event.preventDefault();
-    });
-    
-    // Handle unhandled promise rejections in renderer
-    newWindow.webContents.on('unresponsive', () => {
-      logger.warning('[New Window] Window became unresponsive');
-      // If window is unresponsive for more than 5 seconds, offer to force close
-      setTimeout(() => {
-        if (!newWindow.isDestroyed() && newWindow.webContents.isLoading()) {
-          logger.warning('[New Window] Window still unresponsive, user can force close with Ctrl+W or Ctrl+Q');
-        }
-      }, 5000);
-    });
-    
-    newWindow.webContents.on('responsive', () => {
-      logger.debug('[New Window] Window became responsive again');
-    });
-
-    // Handle renderer process crashes
-    let crashRetries = 0;
-    const MAX_CRASH_RETRIES = 1; // Reload once; if it crashes again it's likely persistent
-
-    newWindow.webContents.on('render-process-gone', (event, details) => {
-      logger.error('=== RENDER PROCESS CRASHED ===');
-      logger.error('Reason:', details.reason);
-      logger.error('Exit Code:', details.exitCode);
-      logger.error('Retries so far:', crashRetries);
-      logger.error('Details:', JSON.stringify(details, null, 2));
-      logger.error('URL at crash:', newWindow.webContents.getURL());
-      logger.error('=============================');
-
-      // shouldRetryCrash checks attempts-so-far BEFORE incrementing, so the
-      // first crash actually reloads (the old code never did - see recovery.js).
-      if (shouldRetryCrash(details.reason, crashRetries, MAX_CRASH_RETRIES)) {
-        crashRetries++;
-        logger.debug(`Attempting to reload crashed page (attempt ${crashRetries}/${MAX_CRASH_RETRIES})...`);
-        // Wait a bit longer before reload to let things settle
-        setTimeout(() => {
-          if (!newWindow.isDestroyed()) {
-            newWindow.reload();
-          }
-        }, 3000);
-      } else {
-        logger.error('Render process crashed. Attempting to recover...');
-        logger.error('The window will remain open. Trying to reload with different settings...');
-        
-        // Don't close - try to keep the window and see if we can recover
-        // The crash might be recoverable if we wait longer
-        logger.debug('Window will stay open. If you see a blank screen, the RDP client crashed.');
-      }
-    });
-
-    // Inject code VERY EARLY - as soon as navigation starts
-    newWindow.webContents.on('did-start-loading', () => {
-      // Inject fixes immediately when page starts loading
-      newWindow.webContents.executeJavaScript(`
-        (function() {
-          // Fix dragEvent error IMMEDIATELY - before any scripts run
-          if (typeof dragEvent === 'undefined') {
-            window.dragEvent = null;
-            Object.defineProperty(window, 'dragEvent', {
-              value: null,
-              writable: true,
-              configurable: true,
-              enumerable: false
-            });
-          }
-          
-          // Try to prevent crashes by wrapping potentially problematic APIs
-          // This might help with WebRTC/WebAssembly issues
-          if (typeof SharedArrayBuffer !== 'undefined') {
-            const originalSAB = SharedArrayBuffer;
-            // Keep SharedArrayBuffer but add error handling
-            window.SharedArrayBuffer = originalSAB;
-          }
-          
-          // Ensure permissions API returns granted for camera/microphone
-          if (navigator.permissions && navigator.permissions.query) {
-            const originalQuery = navigator.permissions.query.bind(navigator.permissions);
-            navigator.permissions.query = function(descriptor) {
-              console.debug('[Permissions API] Query:', descriptor.name);
-              if (descriptor.name === 'camera' || descriptor.name === 'microphone' || descriptor.name === 'media') {
-                console.debug('[Permissions API] Returning granted for:', descriptor.name);
-                return Promise.resolve({ state: 'granted', onchange: null });
-              }
-              return originalQuery(descriptor);
-            };
-          }
-
-          // Also ensure getUserMedia works by pre-granting permissions
-          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            console.debug('[MediaDevices] getUserMedia API available');
-          }
-        })();
-      `).catch(() => {});
-    });
-
-    // Inject more fixes when DOM is ready
-    newWindow.webContents.once('dom-ready', () => {
-      // Inject fixes immediately when DOM is ready
-      newWindow.webContents.executeJavaScript(`
-        (function() {
-          // Fix dragEvent error by providing a fallback - do this FIRST
-          if (typeof dragEvent === 'undefined') {
-            window.dragEvent = null;
-            Object.defineProperty(window, 'dragEvent', {
-              value: null,
-              writable: true,
-              configurable: true,
-              enumerable: false
-            });
-          }
-          
-          // Allow window.close() to work - don't override it
-          // The page should be able to close itself if needed
-          // We'll handle cleanup in the Electron close handler
-          
-          // Try to catch and handle errors that might cause crashes
-          window.addEventListener('error', function(e) {
-            console.debug('Global error caught:', e.message, e.filename, e.lineno);
-            try {
-              e.preventDefault();
-            } catch (err) {
-              console.error('Error preventing default:', err);
-            }
-            return true;
-          }, true);
-
-          window.addEventListener('unhandledrejection', function(e) {
-            console.debug('Unhandled promise rejection:', e.reason);
-            try {
-              e.preventDefault();
-            } catch (err) {
-              console.error('Error preventing default in unhandledrejection:', err);
-            }
-          });
-
-          // Handle window beforeunload - don't prevent closing
-          window.addEventListener('beforeunload', function(e) {
-            try {
-              console.debug('Window beforeunload event');
-              // Don't prevent the unload - allow the window to close
-              // The page should be able to close normally
-            } catch (err) {
-              console.error('Error in beforeunload handler:', err);
-            }
-          });
-        })();
-      `).catch(err => {
-        logger.error('Error injecting fix:', err);
-      });
-    });
-    
-    // Also inject on did-finish-load as backup
-    newWindow.webContents.on('did-finish-load', () => {
-      newWindow.webContents.executeJavaScript(`
-        (function() {
-          if (typeof dragEvent === 'undefined') {
-            window.dragEvent = null;
-          }
-        })();
-      `).catch(() => {});
-    });
-
-    // Show window when ready (in windowed mode - can toggle with F11)
-    newWindow.once('ready-to-show', () => {
-      logger.debug('[New Window] Ready to show');
-      newWindow.show();
-      // Ensure menu bar is always visible
-      newWindow.setMenuBarVisibility(true);
-      // Don't force fullscreen - let user toggle with F11 if needed
-      // DevTools disabled by default - can be toggled via menu
-    });
-
-    // Menu bar visible by default, hidden in fullscreen; child windows also
-    // support Ctrl/Cmd+W and Ctrl/Cmd+Q force-close (their page may block close).
-    attachFullscreenMenuToggle(newWindow);
-    attachWindowKeyShortcuts(newWindow, { allowForceClose: true });
-
-    // Return deny since we're handling the window ourselves
-    // This prevents Electron from creating a duplicate window
-    return { action: 'deny' };
   });
 
   // Load the configured connection URL
@@ -1295,19 +1223,17 @@ app.whenReady().then(() => {
       (webContents && !webContents.isDestroyed() ? webContents.getURL() : '');
     logger.debug(`[Permission Request] ${permission} from ${requestingUrl || 'unknown'}`);
     logger.debug(`[Permission Request] Full details:`, JSON.stringify(details, null, 2));
-    // Allow camera, microphone, notifications, and other media permissions
-    // Note: "media" is a combined permission for camera + microphone
+    // Only the permissions an AVD/RDP session actually needs. Broad grants like
+    // geolocation, midi/midiSysex and openExternal were removed to shrink the
+    // attack surface if a trusted-but-compromised page asks for them.
+    // Note: "media" is a combined permission for camera + microphone.
     const allowedPermissions = [
       'camera',
       'microphone',
-      'media', // Combined permission for camera + microphone
+      'media',
       'notifications',
-      'geolocation',
-      'midi',
-      'midiSysex',
       'pointerLock',
-      'fullscreen',
-      'openExternal'
+      'fullscreen'
     ];
 
     // Check if permission is allowed (case-insensitive)
@@ -1333,11 +1259,8 @@ app.whenReady().then(() => {
     const allowedPermissions = [
       'camera',
       'microphone',
-      'media', // Combined permission for camera + microphone
+      'media',
       'notifications',
-      'geolocation',
-      'midi',
-      'midiSysex',
       'pointerLock',
       'fullscreen'
     ];
@@ -1357,6 +1280,23 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+let sessionClearedOnExit = false;
+
+app.on('before-quit', (event) => {
+  if (!appConfig.clearSessionOnExit || sessionClearedOnExit) return;
+  event.preventDefault();
+  sessionClearedOnExit = true;
+  clearSessionData()
+    .then(() => {
+      logger.info('Session cache and cookies cleared on exit');
+      app.quit();
+    })
+    .catch((err) => {
+      logger.error('Error clearing session on exit:', err);
+      app.quit();
+    });
 });
 
 // Quit when all windows are closed
