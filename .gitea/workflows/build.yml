@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: qnap-docker
@@ -31,11 +34,28 @@ jobs:
       - name: Build AppImage + Flatpak
         run: npm run build
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: windows-app-for-linux-${{ gitea.sha }}
-          path: |
-            dist/*.AppImage
-            dist/*.flatpak
-          retention-days: 14
+      - name: Publish build as a release
+        env:
+          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          API: http://git.koprowski.cc:3000/api/v1/repos/mkoprowski/windows-app-for-linux
+          TAG: latest-build
+        run: |
+          set -e
+          existing_id=$(curl -s -H "Authorization: token $GITEA_TOKEN" "$API/releases/tags/$TAG" \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log(j.id||'')}catch(e){console.log('')}})")
+          if [ -n "$existing_id" ]; then
+            curl -s -X DELETE -H "Authorization: token $GITEA_TOKEN" "$API/releases/$existing_id"
+          fi
+          curl -s -X DELETE -H "Authorization: token $GITEA_TOKEN" "$API/tags/$TAG" || true
+
+          release_id=$(curl -s -X POST -H "Authorization: token $GITEA_TOKEN" -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"Latest build\",\"target_commitish\":\"${GITHUB_SHA:-main}\",\"prerelease\":true}" \
+            "$API/releases" \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{console.log(JSON.parse(d).id)})")
+
+          for f in dist/*.AppImage dist/*.flatpak; do
+            name=$(basename "$f")
+            curl -s -X POST -H "Authorization: token $GITEA_TOKEN" \
+              -F "attachment=@$f" \
+              "$API/releases/$release_id/assets?name=$name"
+          done
