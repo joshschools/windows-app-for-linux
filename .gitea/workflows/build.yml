@@ -62,12 +62,19 @@ jobs:
             exit 1
           fi
 
+          # Uploads over ~50MB fail with "failed to parse request multipart
+          # form" on this instance (proxy body-size limit), so split each
+          # file into chunks well under that and reassemble after download.
           files=(dist/*.AppImage dist/*.flatpak)
           for f in "${files[@]}"; do
             name=$(basename "$f" | tr ' ' '-')
-            echo "uploading $f as $name"
-            curl -s -X POST -H "Authorization: token $GITEA_TOKEN" -H "Expect:" \
-              -F "attachment=@${f};filename=${name}" \
-              "$API/releases/$release_id/assets"
-            echo
+            split -b 30M -d -a 3 "$f" "/tmp/${name}.part"
+            for part in /tmp/"${name}".part*; do
+              pname=$(basename "$part")
+              echo "uploading chunk $pname"
+              curl -s -X POST -H "Authorization: token $GITEA_TOKEN" -H "Expect:" \
+                -F "attachment=@${part};filename=${pname}" \
+                "$API/releases/$release_id/assets"
+              echo
+            done
           done
