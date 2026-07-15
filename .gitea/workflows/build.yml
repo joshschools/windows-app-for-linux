@@ -35,27 +35,38 @@ jobs:
         run: npm run build
 
       - name: Publish build as a release
+        shell: bash
         env:
           GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           API: http://git.koprowski.cc:3000/api/v1/repos/mkoprowski/windows-app-for-linux
           TAG: latest-build
         run: |
-          set -e
-          existing_id=$(curl -s -H "Authorization: token $GITEA_TOKEN" "$API/releases/tags/$TAG" \
-            | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log(j.id||'')}catch(e){console.log('')}})")
-          if [ -n "$existing_id" ]; then
+          set -euo pipefail
+
+          json_id() { grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*'; }
+
+          existing=$(curl -s -H "Authorization: token $GITEA_TOKEN" "$API/releases/tags/$TAG")
+          existing_id=$(printf '%s' "$existing" | json_id || true)
+          if [ -n "${existing_id:-}" ]; then
             curl -s -X DELETE -H "Authorization: token $GITEA_TOKEN" "$API/releases/$existing_id"
           fi
           curl -s -X DELETE -H "Authorization: token $GITEA_TOKEN" "$API/tags/$TAG" || true
 
-          release_id=$(curl -s -X POST -H "Authorization: token $GITEA_TOKEN" -H "Content-Type: application/json" \
+          created=$(curl -s -X POST -H "Authorization: token $GITEA_TOKEN" -H "Content-Type: application/json" \
             -d "{\"tag_name\":\"$TAG\",\"name\":\"Latest build\",\"target_commitish\":\"${GITHUB_SHA:-main}\",\"prerelease\":true}" \
-            "$API/releases" \
-            | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{console.log(JSON.parse(d).id)})")
+            "$API/releases")
+          echo "create release response: $created"
+          release_id=$(printf '%s' "$created" | json_id)
+          if [ -z "$release_id" ]; then
+            echo "Failed to create release, aborting"
+            exit 1
+          fi
 
-          for f in dist/*.AppImage dist/*.flatpak; do
-            name=$(basename "$f")
+          files=(dist/*.AppImage dist/*.flatpak)
+          for f in "${files[@]}"; do
+            name=$(basename "$f" | tr ' ' '-')
+            echo "uploading $f as $name"
             curl -s -X POST -H "Authorization: token $GITEA_TOKEN" \
-              -F "attachment=@$f" \
-              "$API/releases/$release_id/assets?name=$name"
+              -F "attachment=@${f};filename=${name}" \
+              "$API/releases/$release_id/assets"
           done
