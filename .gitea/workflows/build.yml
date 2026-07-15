@@ -66,7 +66,8 @@ jobs:
           for f in "${files[@]}"; do
             name=$(basename "$f" | tr ' ' '-')
             echo "uploading $f as $name"
-            curl -s -X POST -H "Authorization: token $GITEA_TOKEN" \
+            curl -s -X POST -H "Authorization: token $GITEA_TOKEN" -H "Expect:" \
               -F "attachment=@${f};filename=${name}" \
               "$API/releases/$release_id/assets"
+            echo
           done
