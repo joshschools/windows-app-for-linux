@@ -56,7 +56,10 @@ jobs:
             org.freedesktop.Sdk//24.08 \
             org.electronjs.Electron2.BaseApp//24.08
 
-      - name: Build AppImage + Flatpak
+      - name: Install snapcraft
+        run: sudo snap install snapcraft --classic
+
+      - name: Build AppImage + Flatpak + Snap
         run: npm run build
 
       - name: Upload build artifacts
@@ -66,6 +69,7 @@ jobs:
           path: |
             dist/*.AppImage
             dist/*.flatpak
+            dist/*.snap
           if-no-files-found: error
 
       - name: Publish GitHub release
@@ -75,6 +79,7 @@ jobs:
           files: |
             dist/*.AppImage
             dist/*.flatpak
+            dist/*.snap
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

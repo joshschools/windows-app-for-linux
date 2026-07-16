@@ -9,7 +9,8 @@
     "test:watch": "jest --watch",
     "build:appimage": "electron-builder --linux AppImage",
     "build:flatpak": "electron-builder --linux flatpak",
-    "build": "electron-builder --linux AppImage flatpak"
+    "build:snap": "electron-builder --linux snap",
+    "build": "electron-builder --linux AppImage flatpak snap"
   },
   "keywords": [
     "electron",
@@ -37,7 +38,8 @@
     "linux": {
       "target": [
         "AppImage",
-        "flatpak"
+        "flatpak",
+        "snap"
       ],
       "category": "Network;Office",
       "icon": "assets/icons",
@@ -45,6 +47,27 @@
     },
     "appImage": {
       "artifactName": "${productName}-${version}.${ext}"
+    },
+    "snap": {
+      "confinement": "strict",
+      "grade": "stable",
+      "summary": "Unofficial client for Windows App - Access Azure Virtual Desktops on Linux",
+      "plugs": [
+        "default",
+        "camera",
+        "audio-playback",
+        "audio-record",
+        "network",
+        "network-bind",
+        "desktop",
+        "desktop-legacy",
+        "wayland",
+        "x11",
+        "opengl",
+        "pulseaudio",
+        "home",
+        "removable-media"
+      ]
     },
     "flatpak": {
       "runtimeVersion": "24.08",

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Electron wrapper for `https://windows.cloud.microsoft` (Windows App / Azure Virtual Desktop) targeting Linux desktops. Distributed as AppImage and Flatpak (Flathub: `io.github.mkoprowski.WindowsAppForLinux`).
+Electron wrapper for `https://windows.cloud.microsoft` (Windows App / Azure Virtual Desktop) targeting Linux desktops. Distributed as AppImage, Flatpak (Flathub: `io.github.mkoprowski.WindowsAppForLinux`) and Snap.
 
 Reference projects (same architecture): [teams-for-linux](https://github.com/IsmaelMartinez/teams-for-linux), [outlook-for-linux](https://github.com/mahmoudbahaa/outlook-for-linux).
 
@@ -15,8 +15,11 @@ npm install          # first time setup
 npm start            # run in development
 npm run build:appimage
 npm run build:flatpak
-npm run build        # both targets
+npm run build:snap
+npm run build        # all three targets
 ```
+
+Building the flatpak/snap targets locally requires `flatpak-builder`/`snapcraft` on the host — see `.github/workflows/build.yml` for the exact setup steps used in CI.
 
 ## Architecture
 
