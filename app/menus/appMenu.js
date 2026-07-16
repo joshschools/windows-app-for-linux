@@ -1,11 +1,18 @@
 const { Menu, BrowserWindow, app } = require('electron');
 const { t } = require('../i18n');
+const { createSettingsWindow } = require('../settings');
 
 function applyMenu() {
   const template = [
     {
       label: t('menu.file'),
       submenu: [
+        {
+          label: t('menu.settings'),
+          accelerator: 'CmdOrCtrl+,',
+          click: () => createSettingsWindow(BrowserWindow.getFocusedWindow()),
+        },
+        { type: 'separator' },
         {
           label: t('menu.quit'),
           accelerator: 'CmdOrCtrl+Q',

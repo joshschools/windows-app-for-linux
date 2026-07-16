@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
-const { loadConfig } = require('../../app/config');
+const { loadConfig, saveConfig } = require('../../app/config');
 
 describe('loadConfig', () => {
   let tmpFile = null;
@@ -89,5 +89,53 @@ describe('loadConfig', () => {
       argv: ['node', 'app', '--cloud-environment', 'gcchigh', '--url', 'https://cli.example.com'],
     });
     expect(cfg.url).toBe('https://cli.example.com');
+  });
+});
+
+describe('saveConfig', () => {
+  let tmpFile = null;
+
+  afterEach(() => {
+    if (tmpFile) {
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
+      tmpFile = null;
+    }
+  });
+
+  function tmpPath() {
+    tmpFile = path.join(os.tmpdir(), `waf-test-save-${Date.now()}-${Math.random()}.json`);
+    return tmpFile;
+  }
+
+  it('creates the config file with the given updates when none exists', () => {
+    const file = tmpPath();
+    saveConfig({ cloudEnvironment: 'gcchigh' }, { configPath: file });
+    const written = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(written.cloudEnvironment).toBe('gcchigh');
+  });
+
+  it('merges updates with the existing file, preserving unrelated keys', () => {
+    const file = tmpPath();
+    fs.writeFileSync(file, JSON.stringify({ userAgent: 'keep-me' }));
+    saveConfig({ cloudEnvironment: 'dod' }, { configPath: file });
+    const written = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(written.userAgent).toBe('keep-me');
+    expect(written.cloudEnvironment).toBe('dod');
+  });
+
+  it('deletes a key when the update value is undefined', () => {
+    const file = tmpPath();
+    fs.writeFileSync(file, JSON.stringify({ url: 'https://stale.example.com', cloudEnvironment: 'custom' }));
+    saveConfig({ cloudEnvironment: 'gcchigh', url: undefined }, { configPath: file });
+    const written = JSON.parse(fs.readFileSync(file, 'utf8'));
+    expect(written.url).toBeUndefined();
+    expect(written.cloudEnvironment).toBe('gcchigh');
+  });
+
+  it('a subsequent loadConfig picks up the saved values', () => {
+    const file = tmpPath();
+    saveConfig({ cloudEnvironment: 'dod' }, { configPath: file });
+    const cfg = loadConfig({ configPath: file });
+    expect(cfg.url).toBe('https://rdweb.wvd.microsoft.us/arm/webclient/index.html');
   });
 });

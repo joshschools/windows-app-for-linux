@@ -2,6 +2,7 @@
   "tray.showPortal": "Show portal",
   "tray.openSessions": "Open sessions:",
   "tray.avdSession": "AVD Session",
+  "tray.settings": "Settings",
   "tray.quit": "Quit",
   "tray.quitAndClear": "Quit and clear session",
 
@@ -16,5 +17,27 @@
   "menu.devTools": "Developer Tools",
   "menu.navigation": "Navigation",
   "menu.back": "Back",
-  "menu.forward": "Forward"
+  "menu.forward": "Forward",
+  "menu.settings": "Settings",
+
+  "settings.title": "Settings",
+  "settings.cloudEnvironment": "Cloud Environment",
+  "settings.cloudEnvironmentDescription": "Selects the Microsoft cloud endpoint. Choose Custom to enter your own URL.",
+  "settings.environment.commercial": "Commercial",
+  "settings.environment.gcchigh": "GCC High",
+  "settings.environment.dod": "DoD",
+  "settings.environment.custom": "Custom",
+  "settings.connectionUrl": "Connection URL",
+  "settings.connectionUrlDescription": "The URL loaded on startup. Automatically set by the environment above.",
+  "settings.windowSize": "Default Window Size",
+  "settings.width": "Width",
+  "settings.height": "Height",
+  "settings.dataManagement": "Data Management",
+  "settings.clearSession": "Clear Cookies and Cache",
+  "settings.clearSessionDescription": "Clears all stored cookies, cache, and local storage. You will need to log in again.",
+  "settings.clearSessionConfirm": "Are you sure you want to clear all cookies and cache? You will need to log in again.",
+  "settings.clearSessionDone": "Cookies and cache cleared. The portal will reload.",
+  "settings.restartNotice": "Saved. Restart the app for all changes to take effect.",
+  "settings.save": "Save",
+  "settings.cancel": "Cancel"
 }

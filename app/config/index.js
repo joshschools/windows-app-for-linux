@@ -38,6 +38,23 @@ function loadConfig({ configPath = DEFAULT_CONFIG_PATH, argv = process.argv } = 
   };
 }
 
+function saveConfig(updates, { configPath = DEFAULT_CONFIG_PATH } = {}) {
+  const existing = (() => {
+    try { return JSON.parse(fs.readFileSync(configPath, 'utf8')); }
+    catch { return {}; }
+  })();
+
+  const merged = { ...existing, ...updates };
+  for (const [key, value] of Object.entries(updates)) {
+    if (value === undefined) delete merged[key];
+  }
+
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify(merged, null, 2));
+  return merged;
+}
+
 const config = loadConfig();
 module.exports = config;
 module.exports.loadConfig = loadConfig;
+module.exports.saveConfig = saveConfig;

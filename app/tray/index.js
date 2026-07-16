@@ -42,6 +42,14 @@ function rebuildMenu() {
         mainWindow.focus();
       },
     },
+    { type: 'separator' },
+    {
+      label: t('tray.settings'),
+      click: () => {
+        const { createSettingsWindow } = require('../settings');
+        createSettingsWindow(mainWindow);
+      },
+    },
   ];
 
   if (avdWindows.length > 0) {

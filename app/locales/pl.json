@@ -2,6 +2,7 @@
   "tray.showPortal": "Pokaż portal",
   "tray.openSessions": "Otwarte sesje:",
   "tray.avdSession": "Sesja AVD",
+  "tray.settings": "Ustawienia",
   "tray.quit": "Zakończ",
   "tray.quitAndClear": "Zakończ i wyczyść sesję",
 
@@ -16,5 +17,27 @@
   "menu.devTools": "Narzędzia deweloperskie",
   "menu.navigation": "Nawigacja",
   "menu.back": "Wstecz",
-  "menu.forward": "Dalej"
+  "menu.forward": "Dalej",
+  "menu.settings": "Ustawienia",
+
+  "settings.title": "Ustawienia",
+  "settings.cloudEnvironment": "Środowisko cloud",
+  "settings.cloudEnvironmentDescription": "Wybiera punkt końcowy Microsoft cloud. Wybierz Niestandardowe, aby podać własny adres URL.",
+  "settings.environment.commercial": "Commercial",
+  "settings.environment.gcchigh": "GCC High",
+  "settings.environment.dod": "DoD",
+  "settings.environment.custom": "Niestandardowe",
+  "settings.connectionUrl": "Adres URL połączenia",
+  "settings.connectionUrlDescription": "Adres ładowany przy starcie. Ustawiany automatycznie przez środowisko powyżej.",
+  "settings.windowSize": "Domyślny rozmiar okna",
+  "settings.width": "Szerokość",
+  "settings.height": "Wysokość",
+  "settings.dataManagement": "Zarządzanie danymi",
+  "settings.clearSession": "Wyczyść ciasteczka i pamięć podręczną",
+  "settings.clearSessionDescription": "Czyści wszystkie zapisane ciasteczka, pamięć podręczną i dane lokalne. Trzeba będzie zalogować się ponownie.",
+  "settings.clearSessionConfirm": "Na pewno wyczyścić wszystkie ciasteczka i pamięć podręczną? Trzeba będzie zalogować się ponownie.",
+  "settings.clearSessionDone": "Ciasteczka i pamięć podręczna wyczyszczone. Portal zostanie przeładowany.",
+  "settings.restartNotice": "Zapisano. Uruchom ponownie aplikację, aby wszystkie zmiany zaczęły działać.",
+  "settings.save": "Zapisz",
+  "settings.cancel": "Anuluj"
 }
