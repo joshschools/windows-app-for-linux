@@ -18,7 +18,7 @@
     "azure-virtual-desktop",
     "linux"
   ],
-  "author": "mkoprowski",
+  "author": "mariuszkopowski",
   "license": "MIT",
   "devDependencies": {
     "electron": "^34.0.0",
@@ -29,7 +29,7 @@
     "yargs": "^17.7.2"
   },
   "build": {
-    "appId": "io.github.mkoprowski.WindowsAppForLinux",
+    "appId": "io.github.mariuszkopowski.WindowsAppForLinux",
     "productName": "Windows App",
     "files": [
       "app/**/*",
@@ -43,7 +43,7 @@
       ],
       "category": "Network;Office",
       "icon": "assets/icons",
-      "maintainer": "mkoprowski"
+      "maintainer": "mariuszkopowski"
     },
     "appImage": {
       "artifactName": "${productName}-${version}.${ext}"

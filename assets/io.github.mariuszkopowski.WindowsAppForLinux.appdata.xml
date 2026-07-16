@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.mkoprowski.WindowsAppForLinux</id>
+  <id>io.github.mariuszkopowski.WindowsAppForLinux</id>
   <name>Windows App</name>
   <summary>Windows App (cloud.microsoft) client for Linux</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>GPL-3.0-only</project_license>
+  <project_license>MIT</project_license>
 
   <description>
     <p>
@@ -24,15 +24,15 @@
     </ul>
   </description>
 
-  <url type="homepage">https://github.com/mkoprowski/windows-app-for-linux</url>
-  <url type="bugtracker">https://github.com/mkoprowski/windows-app-for-linux/issues</url>
+  <url type="homepage">https://github.com/mariuszkopowski/windows-app-for-linux</url>
+  <url type="bugtracker">https://github.com/mariuszkopowski/windows-app-for-linux/issues</url>
 
-  <launchable type="desktop-id">io.github.mkoprowski.WindowsAppForLinux.desktop</launchable>
+  <launchable type="desktop-id">io.github.mariuszkopowski.WindowsAppForLinux.desktop</launchable>
 
   <screenshots>
     <screenshot type="default">
       <caption>Windows App portal showing available cloud PCs</caption>
-      <image>https://raw.githubusercontent.com/mkoprowski/windows-app-for-linux/main/docs/screenshot.png</image>
+      <image>https://raw.githubusercontent.com/mariuszkopowski/windows-app-for-linux/main/docs/screenshot.png</image>
     </screenshot>
   </screenshots>
 
