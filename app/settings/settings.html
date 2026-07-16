@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #f5f5f7;
+    color: #1a1a2e;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+  }
+  h2 {
+    margin: 0 0 16px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .group {
+    margin-bottom: 18px;
+  }
+  label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 500;
+    color: #444;
+  }
+  select, input[type="text"], input[type="number"] {
+    width: 100%;
+    padding: 8px;
+    background: #fff;
+    border: 1px solid #d0d0d8;
+    border-radius: 4px;
+    color: #1a1a2e;
+    font-size: 13px;
+  }
+  input[type="text"] {
+    font-family: monospace;
+  }
+  input:disabled {
+    background: #ececf0;
+    color: #999;
+    cursor: not-allowed;
+  }
+  .description {
+    font-size: 11px;
+    color: #777;
+    margin-top: 5px;
+  }
+  .size-row {
+    display: flex;
+    gap: 10px;
+  }
+  .size-row > div {
+    flex: 1;
+  }
+  button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    background: #0078d4;
+    color: #fff;
+    font-size: 13px;
+    cursor: pointer;
+    margin-right: 8px;
+  }
+  button:hover { background: #106ebe; }
+  button.secondary {
+    background: #e4e4ea;
+    color: #1a1a2e;
+  }
+  button.secondary:hover { background: #d6d6e0; }
+  button.danger {
+    background: #d13438;
+  }
+  button.danger:hover { background: #a4262c; }
+  .button-group {
+    margin-top: 24px;
+    text-align: right;
+  }
+  .status {
+    margin-top: 12px;
+    font-size: 12px;
+    color: #1c8a3c;
+    min-height: 16px;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid #dcdce2;
+    margin: 20px 0;
+  }
+</style>
+</head>
+<body>
+  <h2 id="title">Settings</h2>
+
+  <div class="group">
+    <label id="lbl-cloudEnvironment" for="cloudEnvironment">Cloud Environment</label>
+    <select id="cloudEnvironment"></select>
+    <div class="description" id="desc-cloudEnvironment"></div>
+  </div>
+
+  <div class="group">
+    <label id="lbl-connectionUrl" for="connectionUrl">Connection URL</label>
+    <input type="text" id="connectionUrl">
+    <div class="description" id="desc-connectionUrl"></div>
+  </div>
+
+  <div class="group">
+    <label id="lbl-windowSize">Default Window Size</label>
+    <div class="size-row">
+      <div>
+        <label id="lbl-width" for="width"></label>
+        <input type="number" id="width" min="800" max="3840">
+      </div>
+      <div>
+        <label id="lbl-height" for="height"></label>
+        <input type="number" id="height" min="600" max="2160">
+      </div>
+    </div>
+  </div>
+
+  <div class="group">
+    <label id="lbl-userAgent" for="userAgent">User-Agent</label>
+    <input type="text" id="userAgent" placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...">
+    <div class="description" id="desc-userAgent"></div>
+  </div>
+
+  <hr>
+
+  <div class="group">
+    <label id="lbl-dataManagement">Data Management</label>
+    <button class="danger" id="clear-btn">Clear Cookies and Cache</button>
+    <div class="description" id="desc-clearSession"></div>
+  </div>
+
+  <div class="button-group">
+    <button class="secondary" id="cancel-btn">Cancel</button>
+    <button id="save-btn">Save</button>
+  </div>
+  <div class="status" id="status"></div>
+
+  <script>
+    let strings = {};
+    let cloudEnvironments = {};
+
+    function t(key) {
+      return strings[key] ?? key;
+    }
+
+    function applyStrings() {
+      document.getElementById('title').textContent = t('settings.title');
+      document.getElementById('lbl-cloudEnvironment').textContent = t('settings.cloudEnvironment');
+      document.getElementById('desc-cloudEnvironment').textContent = t('settings.cloudEnvironmentDescription');
+      document.getElementById('lbl-connectionUrl').textContent = t('settings.connectionUrl');
+      document.getElementById('desc-connectionUrl').textContent = t('settings.connectionUrlDescription');
+      document.getElementById('lbl-windowSize').textContent = t('settings.windowSize');
+      document.getElementById('lbl-width').textContent = t('settings.width');
+      document.getElementById('lbl-height').textContent = t('settings.height');
+      document.getElementById('lbl-userAgent').textContent = t('settings.userAgent');
+      document.getElementById('desc-userAgent').textContent = t('settings.userAgentDescription');
+      document.getElementById('lbl-dataManagement').textContent = t('settings.dataManagement');
+      document.getElementById('clear-btn').textContent = t('settings.clearSession');
+      document.getElementById('desc-clearSession').textContent = t('settings.clearSessionDescription');
+      document.getElementById('cancel-btn').textContent = t('settings.cancel');
+      document.getElementById('save-btn').textContent = t('settings.save');
+    }
+
+    function populateEnvironmentOptions() {
+      const select = document.getElementById('cloudEnvironment');
+      select.innerHTML = '';
+      for (const key of [...Object.keys(cloudEnvironments), 'custom']) {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = t(`settings.environment.${key}`);
+        select.appendChild(option);
+      }
+    }
+
+    function updateUrlField() {
+      const env = document.getElementById('cloudEnvironment').value;
+      const urlField = document.getElementById('connectionUrl');
+      const isCustom = env === 'custom';
+      urlField.disabled = !isCustom;
+      if (!isCustom && cloudEnvironments[env]) {
+        urlField.value = cloudEnvironments[env];
+      }
+    }
+
+    async function init() {
+      const state = await window.settingsAPI.get();
+      strings = state.strings;
+      cloudEnvironments = state.cloudEnvironments;
+
+      applyStrings();
+      populateEnvironmentOptions();
+
+      document.getElementById('cloudEnvironment').value = state.cloudEnvironment;
+      document.getElementById('connectionUrl').value = state.url;
+      document.getElementById('width').value = state.window.width;
+      document.getElementById('height').value = state.window.height;
+      document.getElementById('userAgent').value = state.userAgent;
+      updateUrlField();
+
+      document.getElementById('cloudEnvironment').addEventListener('change', updateUrlField);
+    }
+
+    document.getElementById('cancel-btn').addEventListener('click', () => window.close());
+
+    document.getElementById('save-btn').addEventListener('click', async () => {
+      const env = document.getElementById('cloudEnvironment').value;
+      const isCustom = env === 'custom';
+      const width = parseInt(document.getElementById('width').value, 10);
+      const height = parseInt(document.getElementById('height').value, 10);
+      const userAgent = document.getElementById('userAgent').value.trim();
+
+      await window.settingsAPI.save({
+        cloudEnvironment: env,
+        url: isCustom ? document.getElementById('connectionUrl').value.trim() : undefined,
+        window: { width, height },
+        userAgent: userAgent || undefined,
+      });
+
+      document.getElementById('status').textContent = t('settings.restartNotice');
+    });
+
+    document.getElementById('clear-btn').addEventListener('click', async () => {
+      if (!confirm(t('settings.clearSessionConfirm'))) return;
+      await window.settingsAPI.clearSession();
+      document.getElementById('status').textContent = t('settings.clearSessionDone');
+    });
+
+    init();
+  </script>
+</body>
+</html>

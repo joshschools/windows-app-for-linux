@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.mariuszkopowski.WindowsAppForLinux</id>
+  <name>Windows App</name>
+  <summary>Windows App (cloud.microsoft) client for Linux</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <description>
+    <p>
+      Windows App for Linux is an unofficial Electron wrapper for
+      windows.cloud.microsoft, allowing Linux users to connect to
+      Azure Virtual Desktop and Windows 365 cloud PCs without a
+      native Windows client.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Connects to Windows App portal and launches AVD sessions</li>
+      <li>Each session opens in a separate window with fullscreen support</li>
+      <li>Edge on Windows user-agent spoofing for full compatibility</li>
+      <li>System tray integration with quick access to open sessions</li>
+      <li>Hardware video decode support (VAAPI on Intel/AMD)</li>
+      <li>Wayland and X11 support</li>
+    </ul>
+  </description>
+
+  <url type="homepage">https://github.com/mariuszkopowski/windows-app-for-linux</url>
+  <url type="bugtracker">https://github.com/mariuszkopowski/windows-app-for-linux/issues</url>
+
+  <launchable type="desktop-id">io.github.mariuszkopowski.WindowsAppForLinux.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Windows App portal showing available cloud PCs</caption>
+      <image>https://raw.githubusercontent.com/mariuszkopowski/windows-app-for-linux/main/docs/screenshot.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.1.0" date="2026-06-03">
+      <description>
+        <p>Initial release.</p>
+      </description>
+    </release>
+  </releases>
+
+  <content_rating type="oars-1.1"/>
+
+  <categories>
+    <category>Network</category>
+    <category>Office</category>
+  </categories>
+
+  <keywords>
+    <keyword>windows</keyword>
+    <keyword>azure</keyword>
+    <keyword>virtual desktop</keyword>
+    <keyword>cloud pc</keyword>
+    <keyword>remote desktop</keyword>
+    <keyword>avd</keyword>
+  </keywords>
+</component>

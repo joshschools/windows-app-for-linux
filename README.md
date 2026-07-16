@@ -1,343 +1,102 @@
 # Windows App for Linux
 
-**Unofficial Client for Windows App** - A standalone Electron application that provides native Linux access to Azure Virtual Desktops via Windows App web access (https://windows.cloud.microsoft) with proper browser emulation, device permissions, and remote desktop support.
+An unofficial Electron wrapper for [windows.cloud.microsoft](https://windows.cloud.microsoft) (Windows App / Azure Virtual Desktop / Windows 365), for people who want a native-feeling desktop app on Linux instead of a browser tab.
 
-## Overview
-[![windows-app-for-linux](https://snapcraft.io/windows-app-for-linux/badge.svg)](https://snapcraft.io/windows-app-for-linux)
-[![windows-app-for-linux](https://snapcraft.io/windows-app-for-linux/trending.svg?name=0)](https://snapcraft.io/windows-app-for-linux)
-
-This **unofficial client** wraps the Windows Cloud Devices web interface in an Electron shell, configured to behave like Microsoft Edge browser. It enables full access to Azure Virtual Desktop sessions through Windows App web access, with proper handling of camera, microphone, and other device permissions required for remote desktop connections.
+This is not affiliated with or endorsed by Microsoft.
 
 ## Features
 
-- ✅ **Browser Emulation**: Custom User-Agent (Edge 143.0.0.0) and browser-like headers
-- ✅ **Remote Desktop Support**: Handles new windows for RDP sessions with proper session management
-- ✅ **Device Access**: Camera, microphone, and other media device permissions
-- ✅ **Fullscreen Mode**: Toggle fullscreen with F11
-- ✅ **Multi-Window Support**: Properly handles popup windows for remote desktop connections
-- ✅ **Session Management**: Shared cookies and authentication across windows
-- ✅ **WebRTC & WebAssembly**: Enabled for remote desktop functionality
-- ✅ **SharedArrayBuffer**: Enabled for RDP client compatibility
-- ✅ **Error Recovery**: Automatic crash recovery and error handling
-- ✅ **Linux Packaging**: Snap and Flatpak support for easy distribution
+- Connects to the Windows App portal and launches AVD / Cloud PC sessions in their own windows
+- Edge-on-Windows user-agent spoofing (HTTP header + JS Client Hints) so Conditional Access / Intune MAM checks pass
+- System tray integration — show the portal, jump to any open session, quit (with or without clearing the session)
+- Federated sign-in (ADFS, Okta, Ping, …) stays in-app instead of falling back to your system browser
+- Hardware video decode (VAAPI on Intel/AMD) for the RDP graphics stream
+- Wayland and X11 support
+- Settings window for switching cloud environment (Commercial / GCC High / DoD), default window size, and clearing cookies/cache
+- Distributed as AppImage, Flatpak, and Snap
 
-## Quick Start
+## Installation
 
-### Installation
+Prebuilt packages are attached to [GitHub Releases](https://github.com/mariuszkopowski/windows-app-for-linux/releases).
 
-<a href="https://snapcraft.io/windows-app-for-linux">
-    <img alt="Get it from the Snap Store" src=https://snapcraft.io/en/dark/install.svg />
-  </a>
-
-### Run from source code
-#### Prerequisites
-
-- **Node.js**: v16 or higher (v20+ recommended)
-- **npm**: Comes with Node.js
-- **For Snap builds**: `snapcraft` (install via `sudo snap install snapcraft --classic`)
-- **For Flatpak builds**: `flatpak` and `flatpak-builder`
-
-#### Enviroment setup
-
-1. **Clone or download this repository**
-
-2. **Run the setup script** (optional, checks Node.js and installs dependencies):
-   ```bash
-   ./setup.sh
-   ```
-
-   Or manually install dependencies:
-   ```bash
-      cd src
-   npm install
-   ```
-
-#### Running the Application
-
-Start the application:
-```bash
-cd src
-npm start
-```
-
-## Documentation
-
-For detailed documentation, see the [docs](docs/) folder:
-
-- **[Build Instructions](docs/build-instructions.md)** - Detailed instructions for building Snap and Flatpak packages
-- **[Compare Flags](docs/compare-flags.md)** - Comparison of Electron command-line flags
-
-The app will:
-- Launch in windowed mode
-- Load the Windows Cloud Devices page (Azure Virtual Desktops via Windows App web access)
-- Use the configured Edge User-Agent
-- Automatically grant permissions for camera and microphone when needed
-- Handle new windows for Azure Virtual Desktop sessions
-
-## Keyboard Shortcuts
-
-- **F11**: Toggle fullscreen mode
-- **F12**: Toggle Developer Tools
-- **Ctrl+Shift+I**: Alternative DevTools toggle
-- **Ctrl+N**: Open new window
-- **Ctrl+R**: Reload page
-- **Ctrl+Shift+R**: Force reload
-
-## Building for Distribution
-
-### Standard Electron Build
-
-To build platform-specific installers using electron-builder:
+### AppImage
 
 ```bash
-cd src
-npm run build
+chmod +x "Windows App-*.AppImage"
+./"Windows App-*.AppImage"
 ```
 
-This will create installers in the `build/dist` folder for your platform.
+### Flatpak
 
-### Snap Package
+```bash
+flatpak install --user "Windows App-*.flatpak"
+flatpak run io.github.mariuszkopowski.WindowsAppForLinux
+```
 
-The application can be packaged as a Snap for easy installation on Linux distributions.
+(Once published on Flathub: `flatpak install flathub io.github.mariuszkopowski.WindowsAppForLinux`.)
 
-1. **Install snapcraft** (if not already installed):
-   ```bash
-   sudo snap install snapcraft --classic
-   ```
+### Snap
 
-2. **Build the snap**:
-   ```bash
-   cd src
-   npm run build:snap
-   ```
-   The snap file will be created in the `build/` folder.
-
-   Or directly:
-   ```bash
-   snapcraft pack --destructive-mode --output-dir build
-   ```
-
-3. **Install the snap locally** (for testing):
-   ```bash
-   sudo snap install build/windows-app-for-linux_1.0.0_amd64.snap --dangerous
-   ```
-
-4. **Run the application**:
-   ```bash
-   windows-app-for-linux
-   ```
-
-5. **Publish to Snap Store** (optional):
-   ```bash
-   snapcraft login
-   snapcraft push windows-app-for-linux_1.0.0_amd64.snap
-   ```
-
-#### Snap Permissions
-
-The snap package includes the following permissions (plugs):
-- `camera`: Camera access for video calls
-- `audio-playback`: Audio output
-- `audio-record`: Microphone input
-- `network`: Internet access
-- `desktop`: Desktop integration
-- `wayland` / `x11`: Display server support
-- `opengl`: Hardware acceleration
-- `pulseaudio`: Audio system integration
-- `home`: Home directory access
-- `removable-media`: USB device access
-
-### Flatpak Package
-
-The application can also be packaged as a Flatpak.
-
-1. **Install Flatpak and Flatpak Builder**:
-   ```bash
-   sudo apt install flatpak flatpak-builder
-   flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-   ```
-
-2. **Build the Flatpak**:
-   ```bash
-   cd src
-   npm run build:flatpak
-   ```
-   The build directory will be in `build/flatpak-build/`.
-
-   Or directly:
-   ```bash
-   flatpak-builder build/flatpak-build src/windows-app-for-linux.desktop.yml --force-clean
-   ```
-
-3. **Install locally** (for testing):
-   ```bash
-   cd src
-   npm run install:flatpak
-   ```
-   Or directly:
-   ```bash
-   flatpak-builder --user --install --force-clean build/flatpak-build src/windows-app-for-linux.desktop.yml
-   ```
-
-4. **Run the application**:
-   ```bash
-   flatpak run com.microsoft.WindowsAppForLinux
-   ```
-
-## Architecture
-
-### Main Window
-
-The main window loads the Windows Cloud Devices dashboard at `https://windows.cloud.microsoft/#/devices`, which provides access to Azure Virtual Desktops via Windows App web access. It uses a custom User-Agent and browser-like headers to ensure compatibility with Microsoft's service.
-
-### Remote Desktop Windows
-
-When you connect to an Azure Virtual Desktop session, the application automatically creates a new window with:
-- Shared session and cookies (for authentication)
-- Same User-Agent configuration
-- Proper WebRTC and WebAssembly support
-- Error recovery mechanisms
-- Fullscreen toggle support
-
-### Command Line Switches
-
-The application uses several Electron command-line switches to enable browser-like behavior:
-- `enable-features`: VaapiVideoDecoder, SharedArrayBuffer, CrossOriginOpenerPolicy
-- `enable-blink-features`: SharedArrayBuffer
-- `enable-webrtc`: WebRTC support
-- `enable-webassembly`: WebAssembly support
-- `enable-accelerated-2d-canvas`: Hardware acceleration
-- `enable-gpu-rasterization`: GPU rendering
-- `disable-dev-shm-usage`: Use /tmp for shared memory
+```bash
+sudo snap install --dangerous "windows-app-for-linux_*.snap"
+```
 
 ## Configuration
 
-### User-Agent
+No in-app URL bar — configuration lives in `~/.config/windows-app-for-linux/config.json`, editable directly or through **tray → Settings** (or **File → Settings**, `Ctrl+,`, if the menu bar is visible — it auto-hides by default, tap `Alt` to reveal it).
 
-The User-Agent can be modified in `src/main.js`:
-```javascript
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0';
+```json
+{
+  "cloudEnvironment": "gcchigh",
+  "window": { "width": 1600, "height": 900 }
+}
 ```
 
-### Target URL
+| Key | CLI flag | Description |
+|---|---|---|
+| `cloudEnvironment` | `--cloud-environment` | `commercial` (default), `gcchigh`, or `dod` — resolves to the matching portal URL |
+| `url` | `--url` | Explicit connection URL; overrides `cloudEnvironment` when set |
+| `userAgent` | `--user-agent` | Override the spoofed user-agent string |
+| `window.width` / `window.height` | — | Default window size |
 
-Change the target URL in `src/main.js`:
-```javascript
-mainWindow.loadURL('https://windows.cloud.microsoft/#/devices');
+The Settings window covers `cloudEnvironment`, the connection URL (only editable when environment is set to Custom), window size, and a "Clear Cookies and Cache" button. Most changes take effect after restarting the app.
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+,` | Settings |
+| `Ctrl+Q` | Quit |
+| `Ctrl+R` | Reload |
+| `F11` | Fullscreen |
+| `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Zoom in / out / reset |
+| `Alt+Left` / `Alt+Right` | Back / forward |
+| `Ctrl+Shift+I` | Developer tools |
+
+## Known limitations
+
+These are limitations of the Windows App **web client** itself (windows.cloud.microsoft), not something this wrapper can fix:
+
+- **Webcam redirection is unreliable.** The app grants the `camera` permission automatically, but whether a camera actually shows up inside a remote session depends on Microsoft's web client support, which is still incomplete — it works more reliably in the native (non-web) Windows App. This isn't a bug in this wrapper; there's no code-level fix available on our side.
+- No multi-monitor support, no RDP Shortpath (UDP), no screen-capture protection — all native-client-only features.
+
+See [docs/PLAN.md](docs/PLAN.md) for the full comparison against the native client.
+
+## Building from source
+
+Requires Node.js 20+.
+
+```bash
+npm install
+npm start              # run in development
+npm test                # run the test suite
+
+npm run build:appimage
+npm run build:flatpak   # requires flatpak + flatpak-builder on the host
+npm run build:snap      # requires squashfs-tools on the host
+npm run build            # all three targets
 ```
-
-### Window Size
-
-Default window size can be changed in the `createWindow()` function in `src/main.js`:
-```javascript
-width: 1920,
-height: 1080,
-```
-
-## Permissions
-
-The app automatically grants the following permissions:
-- **Camera**: For video calls and screen sharing
-- **Microphone**: For audio communication
-- **Media**: Combined camera + microphone permission
-- **Notifications**: For system notifications
-- **Geolocation**: If required by the service
-- **Fullscreen**: For immersive remote desktop experience
-- **MIDI**: For MIDI device access
-- **Pointer Lock**: For remote desktop mouse control
-
-## Troubleshooting
-
-### Web Page Doesn't Load
-
-1. **Check internet connection**: Ensure you have access to `windows.cloud.microsoft` (Windows App web access for Azure Virtual Desktops)
-2. **Verify User-Agent**: Check that the User-Agent is correctly set (use F12 DevTools)
-3. **Check console errors**: Enable DevTools (F12) and check for JavaScript errors
-4. **Clear cache**: The app uses Electron's default session storage
-
-### Remote Desktop Window Issues
-
-1. **Blank screen**: The RDP client may take a few seconds to initialize. Wait 5-10 seconds.
-2. **Authentication errors**: Ensure cookies are being shared (check console logs)
-3. **Crashes**: The app includes automatic crash recovery. If it persists, check console logs.
-4. **Performance issues**: Ensure hardware acceleration is enabled (check GPU settings)
-
-### Permission Issues
-
-1. **Camera/Microphone not working**: 
-   - Check system permissions (Linux desktop settings)
-   - For Snap: `snap connect windows-app-for-linux:camera`
-   - For Flatpak: Check Flatpak permissions with `flatpak info com.microsoft.WindowsAppForLinux`
-
-2. **Audio issues**:
-   - Ensure PulseAudio is running
-   - Check audio system permissions
-
-### Debug Mode
-
-To enable more verbose logging, the application already includes extensive console logging. Open DevTools (F12) to see:
-- Navigation events
-- Permission requests
-- Window creation
-- Error messages
-- Network requests
-
-## Development
-
-### Project Structure
-
-```
-.
-├── src/                 # Source code
-│   ├── main.js         # Main Electron process
-│   ├── package.json    # Node.js dependencies and scripts
-│   ├── *.desktop       # Desktop entry file
-│   └── *.png           # Application icon
-├── build/               # Build artifacts (generated)
-│   ├── *.snap          # Snap package output
-│   └── flatpak-build/  # Flatpak build directory
-├── docs/                # Documentation
-│   ├── build-instructions.md
-│   └── compare-flags.md
-├── snapcraft.yaml       # Snap package configuration
-├── setup.sh             # Development environment setup script
-├── .gitignore          # Git ignore rules
-└── README.md           # This file
-```
-
-**Note**: Snapcraft creates temporary build directories (`parts/`, `stage/`, `prime/`, `.snapcraft/`) in the project root during builds. These are automatically ignored by git and can be cleaned with `npm run clean`.
-
-### Dependencies
-
-- **electron**: ^31.0.0 - Electron framework
-- **electron-builder**: ^24.9.1 - Build tool for installers
-
-### Scripts
-
-All scripts should be run from the `src/` directory:
-
-- `npm start`: Run the application in development mode
-- `npm run build`: Build platform-specific installers
-- `npm run build:snap`: Build Snap package (outputs to `build/`)
-- `npm run build:flatpak`: Build Flatpak package (outputs to `build/flatpak-build/`)
-- `npm run install:flatpak`: Build and install Flatpak locally
-- `npm run clean`: Clean all build artifacts
-- `npm run clean:snap`: Clean only Snap build artifacts
-- `npm run clean:flatpak`: Clean only Flatpak build artifacts
 
 ## License
 
-MIT
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit issues or pull requests.
-
-## Notes
-
-- **This is an unofficial client** for Windows App and is not affiliated with or endorsed by Microsoft
-- The application requires an active internet connection to access Azure Virtual Desktops via Windows App web access
-- A Microsoft account is required to use Azure Virtual Desktops
-- Remote desktop sessions (Azure Virtual Desktops) open in separate windows for better isolation
-- The app is designed to work on Linux distributions with X11 or Wayland
-
+[MIT](LICENSE)
