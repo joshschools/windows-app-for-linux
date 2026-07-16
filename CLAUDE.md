@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Electron wrapper for `https://windows.cloud.microsoft` (Windows App / Azure Virtual Desktop) targeting Linux desktops. Distributed as AppImage, Flatpak (Flathub: `io.github.mkoprowski.WindowsAppForLinux`) and Snap.
+Electron wrapper for `https://windows.cloud.microsoft` (Windows App / Azure Virtual Desktop) targeting Linux desktops. Distributed as AppImage, Flatpak (Flathub: `io.github.mariuszkopowski.WindowsAppForLinux`) and Snap.
 
 Reference projects (same architecture): [teams-for-linux](https://github.com/IsmaelMartinez/teams-for-linux), [outlook-for-linux](https://github.com/mahmoudbahaa/outlook-for-linux).
 
@@ -31,6 +31,10 @@ app/
 │   └── index.js               # merges: config.json file → CLI args → defaults (yargs)
 ├── mainAppWindow/
 │   └── index.js               # BrowserWindow lifecycle, UA injection, windowOpenHandler, session setup
+├── settings/
+│   ├── index.js               # settings BrowserWindow + ipcMain handlers, reads/writes config.json
+│   ├── preload.js             # contextBridge — exposes window.settingsAPI only
+│   └── settings.html          # light-themed settings UI
 └── browser/
     └── preload.js             # navigator.platform + userAgentData (Client Hints) spoof for Edge/Windows
 ```
@@ -63,8 +67,14 @@ app/
 
 **AVD session windows clear indexeddb/sessionstorage/serviceworkers/cachestorage before `loadURL`** (`clearAvdSessionState`) to avoid a grey screen on reconnect. `localStorage` and cookies are deliberately excluded — they hold the portal's first-run flags (`preload.js`) and SSO state, which live on the same shared origin.
 
+**Camera doesn't always work in AVD sessions, and it's not a bug in this wrapper.** `permissionAllowed()` grants the `camera` permission unconditionally, but whether the device actually shows up inside the remote session depends entirely on the Windows App **web client**'s webcam-redirection support, which is still incomplete on Microsoft's side (works more reliably in the native, non-web Windows App). Don't try to "fix" camera issues here — there is no code-level fix on the wrapper side. See `docs/PLAN.md` → "Znane ograniczenia".
+
+## Settings window
+
+`app/settings/` — a BrowserWindow (contextIsolation: true, its own preload with contextBridge) reachable via the tray menu ("Ustawienia"/"Settings", always visible) and the File menu (hidden behind `autoHideMenuBar`, so don't rely on it as the only entry point). Lets the user edit the same `config.json` that `app/config/` reads — cloud environment, connection URL (when environment is "custom"), default window size — plus a "Clear Cookies and Cache" button wired to `clearSession()`. Changes are written to disk immediately but most only take effect after an app restart (no live-reload of session/UA).
+
 ## Config file location
 
-`~/.config/windows-app-for-linux/config.json` — overrides any value from `options.js`. No GUI, JSON only.
+`~/.config/windows-app-for-linux/config.json` — overrides any value from `options.js`. Editable directly, or through the Settings window (see above); no separate GUI-vs-file distinction, they read/write the same file.
 
 `cloudEnvironment` (`commercial` | `gcchigh` | `dod`, also `--cloud-environment` on the CLI) resolves to a preset URL in `options.js`. An explicit `url` (file or `--url`) always wins over the preset.

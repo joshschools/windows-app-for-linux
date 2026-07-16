@@ -4,7 +4,7 @@
 
 Natywna aplikacja Linux opakowująca `https://windows.cloud.microsoft` (Windows App / Azure Virtual Desktop). Pozwala pracować z chmurą Windows tak jak z lokalną aplikacją: wielozakładkowy interfejs, obsługa klawiatury w fullscreenie, integracja z systemem.
 
-Dystrybucja: **AppImage** (standalone) i **Flatpak** (Flathub: `io.github.mkoprowski.WindowsAppForLinux`).
+Dystrybucja: **AppImage** (standalone) i **Flatpak** (Flathub: `io.github.mariuszkopowski.WindowsAppForLinux`).
 
 ---
 
@@ -176,8 +176,11 @@ Fullscreen per zakładka z ukryciem Tab Bar.
 | Teams WebRTC optimization | ❌ | ✅ |
 | Screen capture protection | ❌ | ✅ |
 | Intune MAM (pełne) | ⚠️ Edge only | ✅ |
+| Przekierowanie kamery (webcam redirection) | ⚠️ Niestabilne | ✅ |
 
 Ograniczenia web clienta — nie możemy ich naprawić w Elektronie.
+
+**Kamera:** aplikacja przyznaje uprawnienie `camera` automatycznie (`permissionAllowed()` w `app/mainAppWindow/helpers.js`), ale samo podłączenie kamery w sesji AVD zależy od web clienta Windows App, który **nie ma jeszcze pełnego wsparcia dla przekierowania kamery** — bywa, że urządzenie nie pojawia się w sesji zdalnej mimo przyznanych uprawnień, nawet gdy w natywnym kliencie Windows App (nie-web) działa bez problemu. To ograniczenie po stronie Microsoftu, nie da się go naprawić w tym wrapperze.
 
 ---
 

@@ -23,7 +23,7 @@ Każde zadanie ma: opis, kryteria akceptacji, testy jednostkowe (gdzie zasadne) 
 **Pliki:** `package.json`, `.gitignore`
 
 #### Kryteria akceptacji
-- [x] `package.json` zawiera `appId: io.github.mkoprowski.WindowsAppForLinux`
+- [x] `package.json` zawiera `appId: io.github.mariuszkopowski.WindowsAppForLinux`
 - [x] Targets: AppImage i flatpak (bez deb/rpm/snap)
 - [x] Zależności: electron ^34, electron-builder ^25, yargs ^17
 - [x] `.gitignore` wyklucza `node_modules/`, `dist/`
@@ -1057,10 +1057,10 @@ describe('Fullscreen overlay', () => {
 
 **Status:** `pending`  
 **Zablokowane przez:** P5-01  
-**Pliki:** `assets/io.github.mkoprowski.WindowsAppForLinux.appdata.xml`
+**Pliki:** `assets/io.github.mariuszkopowski.WindowsAppForLinux.appdata.xml`
 
 #### Kryteria akceptacji
-- [ ] `<id>`: `io.github.mkoprowski.WindowsAppForLinux`
+- [ ] `<id>`: `io.github.mariuszkopowski.WindowsAppForLinux`
 - [ ] `<name>`: `Windows App`
 - [ ] `<summary>` i `<description>` w języku angielskim
 - [ ] `<url type="homepage">` wskazuje na repozytorium GitHub
@@ -1069,7 +1069,7 @@ describe('Fullscreen overlay', () => {
 - [ ] `appstreamcli validate` przechodzi bez błędów
 
 #### Testy manualne
-1. `appstreamcli validate assets/io.github.mkoprowski.WindowsAppForLinux.appdata.xml` → brak błędów
+1. `appstreamcli validate assets/io.github.mariuszkopowski.WindowsAppForLinux.appdata.xml` → brak błędów
 
 ---
 
@@ -1106,7 +1106,7 @@ describe('Fullscreen overlay', () => {
 #### Testy manualne
 1. `npm run build:flatpak`
 2. `flatpak install --user dist/*.flatpak`
-3. `flatpak run io.github.mkoprowski.WindowsAppForLinux`
+3. `flatpak run io.github.mariuszkopowski.WindowsAppForLinux`
 4. Logowanie i sesja AVD działają
 5. Sprawdź że kamera i mikrofon są dostępne w sesji (jeśli tenant to pozwala)
 
@@ -1121,10 +1121,10 @@ describe('Fullscreen overlay', () => {
 Flathub wymaga oddzielnego publicznego repozytorium GitHub z manifestem. Nie jest częścią głównego repo.
 
 #### Kryteria akceptacji
-- [ ] Repozytorium `flathub/io.github.mkoprowski.WindowsAppForLinux` (lub fork flathub template)
-- [ ] Plik `io.github.mkoprowski.WindowsAppForLinux.yml` z manifestem Flatpak
+- [ ] Repozytorium `flathub/io.github.mariuszkopowski.WindowsAppForLinux` (lub fork flathub template)
+- [ ] Plik `io.github.mariuszkopowski.WindowsAppForLinux.yml` z manifestem Flatpak
 - [ ] Manifest pobiera release AppImage z GitHub Releases lub buduje z source
-- [ ] `flatpak-builder --install --user builddir io.github.mkoprowski.WindowsAppForLinux.yml` działa lokalnie
+- [ ] `flatpak-builder --install --user builddir io.github.mariuszkopowski.WindowsAppForLinux.yml` działa lokalnie
 - [ ] PR do `github.com/flathub/flathub` otwarte (ostatni krok)
 
 #### Testy manualne
