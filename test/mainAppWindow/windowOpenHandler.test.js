@@ -1,4 +1,4 @@
-const { isAuthUrl, isAvdUrl, isSafeExternalUrl } = require('../../app/mainAppWindow/helpers');
+const { isAuthUrl, isAvdUrl, isSafeExternalUrl, isLikelyAuthPopup } = require('../../app/mainAppWindow/helpers');
 
 describe('isAuthUrl', () => {
   it('detects login.microsoftonline.com', () => {
@@ -87,5 +87,32 @@ describe('isSafeExternalUrl', () => {
   it('handles malformed URLs without throwing', () => {
     expect(() => isSafeExternalUrl('not-a-url')).not.toThrow();
     expect(isSafeExternalUrl('not-a-url')).toBe(false);
+  });
+});
+
+describe('isLikelyAuthPopup', () => {
+  it('detects the new-popup disposition', () => {
+    expect(isLikelyAuthPopup(undefined, 'new-popup')).toBe(true);
+  });
+
+  it('detects a "popup" features string', () => {
+    expect(isLikelyAuthPopup('popup=yes,width=500,height=700', 'foreground-tab')).toBe(true);
+  });
+
+  it('detects small width/height dimensions', () => {
+    expect(isLikelyAuthPopup('width=500,height=700', 'foreground-tab')).toBe(true);
+  });
+
+  it('rejects large window dimensions (RDP-session sized)', () => {
+    expect(isLikelyAuthPopup('width=1920,height=1080', 'foreground-tab')).toBe(false);
+  });
+
+  it('rejects when no size/popup signal is present', () => {
+    expect(isLikelyAuthPopup(undefined, 'foreground-tab')).toBe(false);
+  });
+
+  it('handles non-string features without throwing', () => {
+    expect(() => isLikelyAuthPopup(null, 'foreground-tab')).not.toThrow();
+    expect(isLikelyAuthPopup(null, 'foreground-tab')).toBe(false);
   });
 });

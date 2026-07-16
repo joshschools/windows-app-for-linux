@@ -19,10 +19,15 @@ function loadConfig({ configPath = DEFAULT_CONFIG_PATH, argv = process.argv } = 
   const args = yargs(hideBin(argv))
     .option('url', { type: 'string' })
     .option('user-agent', { type: 'string' })
+    .option('cloud-environment', { type: 'string', choices: Object.keys(defaults.cloudEnvironments) })
     .parseSync();
+
+  const cloudEnvironment = args['cloud-environment'] || fileConfig.cloudEnvironment;
+  const envUrl = cloudEnvironment && defaults.cloudEnvironments[cloudEnvironment];
 
   return {
     ...defaults,
+    ...(envUrl && { url: envUrl }),
     ...fileConfig,
     ...(args.url && { url: args.url }),
     ...(args['user-agent'] && { userAgent: args['user-agent'] }),

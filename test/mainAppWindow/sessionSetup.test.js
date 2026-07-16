@@ -1,4 +1,4 @@
-const { permissionAllowed, stripCspReportOnly } = require('../../app/mainAppWindow/helpers');
+const { permissionAllowed, stripCspReportOnly, clearAvdSessionState } = require('../../app/mainAppWindow/helpers');
 
 describe('permissionAllowed', () => {
   const granted = ['camera', 'microphone', 'notifications', 'media', 'display-capture', 'clipboard-read', 'clipboard-sanitized-write'];
@@ -47,5 +47,23 @@ describe('stripCspReportOnly', () => {
 
   it('handles empty headers object', () => {
     expect(stripCspReportOnly({})).toEqual({});
+  });
+});
+
+describe('clearAvdSessionState', () => {
+  it('clears indexeddb, sessionstorage, serviceworkers and cachestorage', async () => {
+    const clearStorageData = jest.fn().mockResolvedValue(undefined);
+    await clearAvdSessionState({ clearStorageData });
+    expect(clearStorageData).toHaveBeenCalledWith({
+      storages: ['indexeddb', 'sessionstorage', 'serviceworkers', 'cachestorage'],
+    });
+  });
+
+  it('does not clear localStorage or cookies', () => {
+    const clearStorageData = jest.fn().mockResolvedValue(undefined);
+    clearAvdSessionState({ clearStorageData });
+    const [{ storages }] = clearStorageData.mock.calls[0];
+    expect(storages).not.toContain('localstorage');
+    expect(storages).not.toContain('cookies');
   });
 });

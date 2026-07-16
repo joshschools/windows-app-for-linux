@@ -62,4 +62,32 @@ describe('loadConfig', () => {
     const cfg = loadConfig({ configPath: tmpFile });
     expect(cfg.url).toBe('https://windows.cloud.microsoft/#/devices');
   });
+
+  it('CLI --cloud-environment resolves to the matching URL', () => {
+    const cfg = loadConfig({
+      configPath: '/nonexistent.json',
+      argv: ['node', 'app', '--cloud-environment', 'gcchigh'],
+    });
+    expect(cfg.url).toBe('https://rdweb.wvd.azure.us/arm/webclient/index.html');
+  });
+
+  it('file cloudEnvironment resolves to the matching URL', () => {
+    const file = writeTmpConfig({ cloudEnvironment: 'dod' });
+    const cfg = loadConfig({ configPath: file });
+    expect(cfg.url).toBe('https://rdweb.wvd.microsoft.us/arm/webclient/index.html');
+  });
+
+  it('explicit file url wins over cloudEnvironment preset', () => {
+    const file = writeTmpConfig({ cloudEnvironment: 'gcchigh', url: 'https://custom.example.com' });
+    const cfg = loadConfig({ configPath: file });
+    expect(cfg.url).toBe('https://custom.example.com');
+  });
+
+  it('CLI --url wins over CLI --cloud-environment', () => {
+    const cfg = loadConfig({
+      configPath: '/nonexistent.json',
+      argv: ['node', 'app', '--cloud-environment', 'gcchigh', '--url', 'https://cli.example.com'],
+    });
+    expect(cfg.url).toBe('https://cli.example.com');
+  });
 });

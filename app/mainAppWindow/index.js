@@ -7,6 +7,8 @@ const {
   isAuthUrl,
   isAvdUrl,
   isSafeExternalUrl,
+  isLikelyAuthPopup,
+  clearAvdSessionState,
   permissionAllowed,
   stripCspReportOnly,
   handleRenderProcessGone,
@@ -57,11 +59,28 @@ function createAvdWindow(url) {
     },
   });
 
-  win.webContents.setWindowOpenHandler(({ url: newUrl }) => {
+  win.webContents.setWindowOpenHandler(({ url: newUrl, features, disposition }) => {
     if (!newUrl || newUrl === 'about:blank') return { action: 'deny' };
     if (isAvdUrl(newUrl)) {
       createAvdWindow(newUrl);
       return { action: 'deny' };
+    }
+    if (isSafeExternalUrl(newUrl) && isLikelyAuthPopup(features, disposition)) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          modal: true,
+          parent: win,
+          width: 520,
+          height: 700,
+          webPreferences: {
+            partition: config.sessionPartition,
+            contextIsolation: false,
+            sandbox: false,
+            nodeIntegration: false,
+          },
+        },
+      };
     }
     if (isSafeExternalUrl(newUrl)) shell.openExternal(newUrl);
     return { action: 'deny' };
@@ -82,7 +101,16 @@ function createAvdWindow(url) {
     rebuildMenu();
   });
 
-  win.loadURL(url, { userAgent: config.userAgent });
+  // Only clear stale RDP state when this is the sole AVD window — with other
+  // sessions open, clearing session-wide storage would corrupt their state too.
+  if (avdWindows.size === 1) {
+    const avdSession = session.fromPartition(config.sessionPartition);
+    clearAvdSessionState(avdSession).finally(() => {
+      win.loadURL(url, { userAgent: config.userAgent });
+    });
+  } else {
+    win.loadURL(url, { userAgent: config.userAgent });
+  }
 
   return win;
 }
@@ -137,11 +165,15 @@ async function createMainWindow() {
     },
   });
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  mainWindow.webContents.setWindowOpenHandler(({ url, features, disposition }) => {
     if (!url || url === 'about:blank' || url === 'about:blank#blocked') {
       return { action: 'deny' };
     }
-    if (isAuthUrl(url)) {
+    if (isAvdUrl(url)) {
+      createAvdWindow(url);
+      return { action: 'deny' };
+    }
+    if (isAuthUrl(url) || (isSafeExternalUrl(url) && isLikelyAuthPopup(features, disposition))) {
       return {
         action: 'allow',
         overrideBrowserWindowOptions: {
@@ -157,10 +189,6 @@ async function createMainWindow() {
           },
         },
       };
-    }
-    if (isAvdUrl(url)) {
-      createAvdWindow(url);
-      return { action: 'deny' };
     }
     if (isSafeExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };

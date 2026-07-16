@@ -56,6 +56,12 @@ app/
 
 **Fullscreen keyboard passthrough** is handled by the web app itself once Electron enters fullscreen — no custom key interception needed. F11 will toggle Electron fullscreen.
 
+**Auth popups from federated IdPs (ADFS, Okta, Ping, ...) can't be allow-listed by domain** — `isAuthUrl()` only covers Microsoft's own domains. `isLikelyAuthPopup()` (window size/disposition heuristic) is a fallback that lets these stay in-app as a modal instead of falling through to `shell.openExternal`.
+
+**AVD session windows clear indexeddb/sessionstorage/serviceworkers/cachestorage before `loadURL`** (`clearAvdSessionState`) to avoid a grey screen on reconnect. `localStorage` and cookies are deliberately excluded — they hold the portal's first-run flags (`preload.js`) and SSO state, which live on the same shared origin.
+
 ## Config file location
 
 `~/.config/windows-app-for-linux/config.json` — overrides any value from `options.js`. No GUI, JSON only.
+
+`cloudEnvironment` (`commercial` | `gcchigh` | `dod`, also `--cloud-environment` on the CLI) resolves to a preset URL in `options.js`. An explicit `url` (file or `--url`) always wins over the preset.

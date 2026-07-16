@@ -32,6 +32,27 @@ function isSafeExternalUrl(url) {
   }
 }
 
+// Federated/enterprise identity providers (ADFS, Okta, Ping, ...) can't be
+// enumerated by domain, but Chromium reports them as small popup windows
+// during sign-in — used as a fallback signal for isAuthUrl().
+function isLikelyAuthPopup(features, disposition) {
+  if (disposition === 'new-popup') return true;
+  if (typeof features !== 'string') return false;
+  if (features.includes('popup')) return true;
+  const width = Number((/\bwidth=(\d+)/i.exec(features) || [])[1]);
+  const height = Number((/\bheight=(\d+)/i.exec(features) || [])[1]);
+  return Boolean(width && height && width < 800 && height < 800);
+}
+
+// Clears stale RDP session state (fixes a grey screen on reconnect) without
+// touching localStorage — the portal's first-run flags (see preload.js) and
+// cookies (SSO) live there and must survive across AVD sessions.
+async function clearAvdSessionState(appSession) {
+  await appSession.clearStorageData({
+    storages: ['indexeddb', 'sessionstorage', 'serviceworkers', 'cachestorage'],
+  });
+}
+
 const ALLOWED_PERMISSIONS = [
   'camera', 'microphone', 'notifications', 'media',
   'display-capture', 'clipboard-read', 'clipboard-sanitized-write',
@@ -78,6 +99,8 @@ module.exports = {
   isAuthUrl,
   isAvdUrl,
   isSafeExternalUrl,
+  isLikelyAuthPopup,
+  clearAvdSessionState,
   permissionAllowed,
   stripCspReportOnly,
   handleRenderProcessGone,
