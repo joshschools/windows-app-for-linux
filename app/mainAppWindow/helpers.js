@@ -15,7 +15,21 @@ function isAuthUrl(url) {
 }
 
 function isAvdUrl(url) {
-  return url.includes('windows.cloud.microsoft/webclient/avd/');
+  try {
+    const { hostname, pathname } = new URL(url);
+    return hostname === 'windows.cloud.microsoft' && pathname.startsWith('/webclient/avd/');
+  } catch {
+    return false;
+  }
+}
+
+function isSafeExternalUrl(url) {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === 'https:' || protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 const ALLOWED_PERMISSIONS = [
@@ -63,6 +77,7 @@ function createAboutBlankInterceptor(openExternal) {
 module.exports = {
   isAuthUrl,
   isAvdUrl,
+  isSafeExternalUrl,
   permissionAllowed,
   stripCspReportOnly,
   handleRenderProcessGone,

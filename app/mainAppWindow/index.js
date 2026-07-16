@@ -6,6 +6,7 @@ const windowState = require('./windowState');
 const {
   isAuthUrl,
   isAvdUrl,
+  isSafeExternalUrl,
   permissionAllowed,
   stripCspReportOnly,
   handleRenderProcessGone,
@@ -62,7 +63,7 @@ function createAvdWindow(url) {
       createAvdWindow(newUrl);
       return { action: 'deny' };
     }
-    shell.openExternal(newUrl);
+    if (isSafeExternalUrl(newUrl)) shell.openExternal(newUrl);
     return { action: 'deny' };
   });
 
@@ -161,7 +162,7 @@ async function createMainWindow() {
       createAvdWindow(url);
       return { action: 'deny' };
     }
-    shell.openExternal(url);
+    if (isSafeExternalUrl(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
 
