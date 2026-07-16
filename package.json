@@ -31,6 +31,7 @@
   "build": {
     "appId": "io.github.mariuszkopowski.WindowsAppForLinux",
     "productName": "Windows App",
+    "publish": null,
     "files": [
       "app/**/*",
       "assets/**/*"
