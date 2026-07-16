@@ -1,10 +1,6 @@
 // Runs in renderer context (contextIsolation: false) before page scripts
 
-spoofPlatform();
-spoofUserAgentData();
-skipFirstRunExperience();
-
-// ---------------------------------------------------------------------------
+const { parseUaVersions } = require('../mainAppWindow/helpers');
 
 function skipFirstRunExperience() {
   try {
@@ -39,8 +35,10 @@ function skipFirstRunExperience() {
 
 // ---------------------------------------------------------------------------
 
-const EDGE_VERSION = '143';
-const CHROME_VERSION = '143';
+// Derived from the actual (possibly user-configured) UA string rather than a
+// hardcoded version, so a UA changed via Settings doesn't drift out of sync
+// with the Client Hints this preload reports.
+const { edge: EDGE_VERSION, chrome: CHROME_VERSION } = parseUaVersions(navigator.userAgent);
 const BRANDS = [
   { brand: 'Microsoft Edge', version: EDGE_VERSION },
   { brand: 'Chromium', version: CHROME_VERSION },
@@ -110,3 +108,10 @@ function spoofUserAgentData() {
     }
   } catch { /* non-fatal */ }
 }
+
+// ---------------------------------------------------------------------------
+// Must run after the declarations above — spoofUserAgentData() reads BRANDS.
+
+spoofPlatform();
+spoofUserAgentData();
+skipFirstRunExperience();

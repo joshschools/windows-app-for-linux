@@ -124,6 +124,12 @@
     </div>
   </div>
 
+  <div class="group">
+    <label id="lbl-userAgent" for="userAgent">User-Agent</label>
+    <input type="text" id="userAgent" placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) ...">
+    <div class="description" id="desc-userAgent"></div>
+  </div>
+
   <hr>
 
   <div class="group">
@@ -155,6 +161,8 @@
       document.getElementById('lbl-windowSize').textContent = t('settings.windowSize');
       document.getElementById('lbl-width').textContent = t('settings.width');
       document.getElementById('lbl-height').textContent = t('settings.height');
+      document.getElementById('lbl-userAgent').textContent = t('settings.userAgent');
+      document.getElementById('desc-userAgent').textContent = t('settings.userAgentDescription');
       document.getElementById('lbl-dataManagement').textContent = t('settings.dataManagement');
       document.getElementById('clear-btn').textContent = t('settings.clearSession');
       document.getElementById('desc-clearSession').textContent = t('settings.clearSessionDescription');
@@ -195,6 +203,7 @@
       document.getElementById('connectionUrl').value = state.url;
       document.getElementById('width').value = state.window.width;
       document.getElementById('height').value = state.window.height;
+      document.getElementById('userAgent').value = state.userAgent;
       updateUrlField();
 
       document.getElementById('cloudEnvironment').addEventListener('change', updateUrlField);
@@ -207,11 +216,13 @@
       const isCustom = env === 'custom';
       const width = parseInt(document.getElementById('width').value, 10);
       const height = parseInt(document.getElementById('height').value, 10);
+      const userAgent = document.getElementById('userAgent').value.trim();
 
       await window.settingsAPI.save({
         cloudEnvironment: env,
         url: isCustom ? document.getElementById('connectionUrl').value.trim() : undefined,
         window: { width, height },
+        userAgent: userAgent || undefined,
       });
 
       document.getElementById('status').textContent = t('settings.restartNotice');

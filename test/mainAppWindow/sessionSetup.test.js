@@ -1,4 +1,4 @@
-const { permissionAllowed, stripCspReportOnly, clearAvdSessionState } = require('../../app/mainAppWindow/helpers');
+const { permissionAllowed, stripCspReportOnly, clearAvdSessionState, parseUaVersions } = require('../../app/mainAppWindow/helpers');
 
 describe('permissionAllowed', () => {
   const granted = ['camera', 'microphone', 'notifications', 'media', 'display-capture', 'clipboard-read', 'clipboard-sanitized-write'];
@@ -65,5 +65,27 @@ describe('clearAvdSessionState', () => {
     const [{ storages }] = clearStorageData.mock.calls[0];
     expect(storages).not.toContain('localstorage');
     expect(storages).not.toContain('cookies');
+  });
+});
+
+describe('parseUaVersions', () => {
+  it('extracts the Edge and Chrome major versions from a standard UA string', () => {
+    const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0';
+    expect(parseUaVersions(ua)).toEqual({ edge: '143', chrome: '143' });
+  });
+
+  it('extracts differing Edge/Chrome versions', () => {
+    const ua = 'Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36 Edg/121.0.0.0';
+    expect(parseUaVersions(ua)).toEqual({ edge: '121', chrome: '120' });
+  });
+
+  it('falls back to 143 when the UA has no Edg/ token', () => {
+    const ua = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/143.0.0.0 Safari/537.36';
+    expect(parseUaVersions(ua)).toEqual({ edge: '143', chrome: '143' });
+  });
+
+  it('handles empty/undefined input without throwing', () => {
+    expect(() => parseUaVersions(undefined)).not.toThrow();
+    expect(parseUaVersions('')).toEqual({ edge: '143', chrome: '143' });
   });
 });

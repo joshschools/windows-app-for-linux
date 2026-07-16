@@ -44,6 +44,18 @@ function isLikelyAuthPopup(features, disposition) {
   return Boolean(width && height && width < 800 && height < 800);
 }
 
+// Derives the Edge/Chromium major version from the configured User-Agent
+// string, so the sec-ch-ua headers and the userAgentData spoof (preload.js)
+// stay consistent with a user-edited UA instead of a second hardcoded copy.
+function parseUaVersions(userAgent) {
+  const edgeMatch = /Edg\/(\d+)/.exec(userAgent || '');
+  const chromeMatch = /Chrome\/(\d+)/.exec(userAgent || '');
+  return {
+    edge: edgeMatch ? edgeMatch[1] : '143',
+    chrome: chromeMatch ? chromeMatch[1] : '143',
+  };
+}
+
 // Clears stale RDP session state (fixes a grey screen on reconnect) without
 // touching localStorage — the portal's first-run flags (see preload.js) and
 // cookies (SSO) live there and must survive across AVD sessions.
@@ -100,6 +112,7 @@ module.exports = {
   isAvdUrl,
   isSafeExternalUrl,
   isLikelyAuthPopup,
+  parseUaVersions,
   clearAvdSessionState,
   permissionAllowed,
   stripCspReportOnly,

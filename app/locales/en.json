@@ -32,6 +32,8 @@
   "settings.windowSize": "Default Window Size",
   "settings.width": "Width",
   "settings.height": "Height",
+  "settings.userAgent": "User-Agent",
+  "settings.userAgentDescription": "Sent with HTTP requests and reflected in navigator.userAgentData. Only change this if a tenant needs a different Edge/Windows version — clear the field to reset to the built-in default.",
   "settings.dataManagement": "Data Management",
   "settings.clearSession": "Clear Cookies and Cache",
   "settings.clearSessionDescription": "Clears all stored cookies, cache, and local storage. You will need to log in again.",

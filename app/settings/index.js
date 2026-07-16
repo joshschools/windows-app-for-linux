@@ -16,6 +16,8 @@ const STRING_KEYS = [
   'settings.windowSize',
   'settings.width',
   'settings.height',
+  'settings.userAgent',
+  'settings.userAgentDescription',
   'settings.dataManagement',
   'settings.clearSession',
   'settings.clearSessionDescription',
@@ -42,6 +44,7 @@ function registerHandlers() {
     return {
       cloudEnvironment: config.cloudEnvironment || 'commercial',
       url: config.url,
+      userAgent: config.userAgent,
       cloudEnvironments: config.cloudEnvironments,
       window: config.window,
       strings: collectStrings(),

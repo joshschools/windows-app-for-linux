@@ -32,6 +32,8 @@
   "settings.windowSize": "Domyślny rozmiar okna",
   "settings.width": "Szerokość",
   "settings.height": "Wysokość",
+  "settings.userAgent": "User-Agent",
+  "settings.userAgentDescription": "Wysyłany z żądaniami HTTP i odzwierciedlany w navigator.userAgentData. Zmieniaj tylko jeśli tenant wymaga innej wersji Edge/Windows — wyczyść pole, żeby wrócić do wbudowanej wartości domyślnej.",
   "settings.dataManagement": "Zarządzanie danymi",
   "settings.clearSession": "Wyczyść ciasteczka i pamięć podręczną",
   "settings.clearSessionDescription": "Czyści wszystkie zapisane ciasteczka, pamięć podręczną i dane lokalne. Trzeba będzie zalogować się ponownie.",
