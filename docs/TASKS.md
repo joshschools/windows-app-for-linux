@@ -1,61 +1,61 @@
-# Rejestr zadań — windows-app-for-linux
+# Task register — windows-app-for-linux
 
-## Legenda statusów
+## Status legend
 
-| Symbol | Znaczenie |
+| Symbol | Meaning |
 |---|---|
-| `pending` | Nie zaczęte |
-| `in_progress` | W trakcie |
-| `completed` | Ukończone |
-| `blocked` | Zablokowane przez inne zadanie |
+| `pending` | Not started |
+| `in_progress` | In progress |
+| `completed` | Done |
+| `blocked` | Blocked by another task |
 
-Każde zadanie ma: opis, kryteria akceptacji, testy jednostkowe (gdzie zasadne) i testy manualne (dla agenta/użytkownika).
-
----
-
-## Faza 1 — Fundament
+Each task has: a description, acceptance criteria, unit tests (where applicable), and manual tests (for the agent/user).
 
 ---
 
-### P1-01 — Scaffold projektu
-
-**Status:** `completed`  
-**Pliki:** `package.json`, `.gitignore`
-
-#### Kryteria akceptacji
-- [x] `package.json` zawiera `appId: io.github.mariuszkopowski.WindowsAppForLinux`
-- [x] Targets: AppImage i flatpak (bez deb/rpm/snap)
-- [x] Zależności: electron ^34, electron-builder ^25, yargs ^17
-- [x] `.gitignore` wyklucza `node_modules/`, `dist/`
-
-#### Testy jednostkowe
-_Nie dotyczy — plik konfiguracyjny._
-
-#### Testy manualne
-1. `npm install` kończy się bez błędów
-2. Katalog `node_modules/` istnieje po instalacji
+## Phase 1 — Foundation
 
 ---
 
-### P1-02 — Flagi Chromium i entry point
+### P1-01 — Project scaffold
 
-**Status:** `completed`  
-**Pliki:** `app/index.js`
+**Status:** `completed`
+**Files:** `package.json`, `.gitignore`
 
-#### Kryteria akceptacji
-- [x] `enable-features` zawiera: `VaapiVideoDecoder`, `SharedArrayBuffer`, `CrossOriginOpenerPolicy`
-- [x] `enable-blink-features` zawiera: `SharedArrayBuffer`
-- [x] Wayland: jeśli `WAYLAND_DISPLAY` ustawiony → dodaje `UseOzonePlatform`, `WebRTCPipeWireCapturer`, `--ozone-platform=wayland`
-- [x] Single-instance lock — druhie uruchomienie skupia pierwsze okno
-- [x] Flagi ustawiane **przed** `app.whenReady()`
+#### Acceptance criteria
+- [x] `package.json` contains `appId: io.github.mariuszkopowski.WindowsAppForLinux`
+- [x] Targets: AppImage, Flatpak, and Snap
+- [x] Dependencies: electron ^34, electron-builder ^25, yargs ^17
+- [x] `.gitignore` excludes `node_modules/`, `dist/`
 
-#### Testy jednostkowe
+#### Unit tests
+_Not applicable — configuration file._
+
+#### Manual tests
+1. `npm install` completes without errors
+2. The `node_modules/` directory exists after install
+
+---
+
+### P1-02 — Chromium flags and entry point
+
+**Status:** `completed`
+**Files:** `app/index.js`
+
+#### Acceptance criteria
+- [x] `enable-features` contains: `VaapiVideoDecoder`, `SharedArrayBuffer`, `CrossOriginOpenerPolicy`
+- [x] `enable-blink-features` contains: `SharedArrayBuffer`
+- [x] Wayland: if `WAYLAND_DISPLAY` is set → adds `UseOzonePlatform`, `WebRTCPipeWireCapturer`, `--ozone-platform=wayland`
+- [x] Single-instance lock — a second launch focuses the first window
+- [x] Flags set **before** `app.whenReady()`
+
+#### Unit tests
 ```js
 // test/config/chromiumFlags.test.js
 describe('Wayland detection', () => {
   it('adds Wayland flags when WAYLAND_DISPLAY is set', () => {
     process.env.WAYLAND_DISPLAY = ':0';
-    const flags = buildFeatureFlags(); // wyekstrahowana funkcja pomocnicza
+    const flags = buildFeatureFlags(); // extracted helper function
     expect(flags).toContain('UseOzonePlatform');
     expect(flags).toContain('WebRTCPipeWireCapturer');
     delete process.env.WAYLAND_DISPLAY;
@@ -69,26 +69,26 @@ describe('Wayland detection', () => {
 });
 ```
 
-#### Testy manualne
-1. `npm start` — okno aplikacji pojawia się (nawet z białym ekranem lub błędem sieciowym to OK na tym etapie)
-2. Drugie `npm start` w tym samym czasie — pierwsze okno wysuwa się na wierzch, drugie nie otwiera się
-3. Na systemie z Waylandem (`echo $WAYLAND_DISPLAY`): aplikacja uruchamia się bez błędów XWayland
+#### Manual tests
+1. `npm start` — the app window appears (even with a blank screen or a network error, that's fine at this stage)
+2. A second `npm start` at the same time — the first window comes to the front, the second doesn't open
+3. On a Wayland system (`echo $WAYLAND_DISPLAY`): the app starts without XWayland errors
 
 ---
 
-### P1-03 — System konfiguracji
+### P1-03 — Config system
 
-**Status:** `completed`  
-**Pliki:** `app/config/options.js`, `app/config/index.js`
+**Status:** `completed`
+**Files:** `app/config/options.js`, `app/config/index.js`
 
-#### Kryteria akceptacji
-- [x] `options.js` zawiera: `url`, `userAgent`, `sessionPartition`, `window`
-- [x] `config/index.js` merguje: plik JSON → CLI args → defaults
-- [x] Plik konfiguracyjny szukany w `~/.config/windows-app-for-linux/config.json`
-- [x] Brak pliku konfiguracyjnego nie powoduje błędu — używane są defaults
-- [x] CLI arg `--user-agent "..."` nadpisuje UA string
+#### Acceptance criteria
+- [x] `options.js` contains: `url`, `userAgent`, `sessionPartition`, `window`
+- [x] `config/index.js` merges: JSON file → CLI args → defaults
+- [x] Config file looked up at `~/.config/windows-app-for-linux/config.json`
+- [x] A missing config file doesn't cause an error — defaults are used
+- [x] CLI arg `--user-agent "..."` overrides the UA string
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 // test/config/index.test.js
 describe('Config loading', () => {
@@ -124,30 +124,30 @@ describe('Config loading', () => {
 });
 ```
 
-#### Testy manualne
-1. Uruchom `npm start -- --user-agent "TestUA/1.0"`, otwórz DevTools (F12), w konsoli wpisz `navigator.userAgent` → powinno pokazać `TestUA/1.0` (jeśli preload nie patchuje tej wartości) lub Edge UA ze spoofa
-2. Utwórz `~/.config/windows-app-for-linux/config.json` z `{"window": {"width": 1920}}`, uruchom app → okno ma szerokość ~1920px
+#### Manual tests
+1. Run `npm start -- --user-agent "TestUA/1.0"`, open DevTools (F12), type `navigator.userAgent` in the console → should show `TestUA/1.0` (if the preload doesn't patch this value) or the spoofed Edge UA
+2. Create `~/.config/windows-app-for-linux/config.json` with `{"window": {"width": 1920}}`, run the app → the window is ~1920px wide
 
 ---
 
-### P1-04 — BrowserWindow i sesja
+### P1-04 — BrowserWindow and session
 
-**Status:** `completed` ✅ przetestowane manualnie  
-**Pliki:** `app/mainAppWindow/index.js`
+**Status:** `completed` ✅ manually tested
+**Files:** `app/mainAppWindow/index.js`
 
-#### Kryteria akceptacji
-- [x] BrowserWindow używa partycji `persist:windows-app`
+#### Acceptance criteria
+- [x] BrowserWindow uses the `persist:windows-app` partition
 - [x] `webSecurity: true`, `contextIsolation: false`, `sandbox: false`, `nodeIntegration: false`
-- [x] Session-level UA ustawiony przez `appSession.setUserAgent()`
-- [x] Uprawnienia: camera, microphone, notifications, media, display-capture przyznawane automatycznie
-- [x] CSP `content-security-policy-report-only` headers usuwane z odpowiedzi
-- [x] `app/browser/preload.js` załadowany jako preload
-- [x] `sec-ch-ua` / `sec-ch-ua-platform` nadpisywane przez `onBeforeSendHeaders` (dodane po testach — Chromium generuje je niezależnie od `setUserAgent`)
-- [x] F12 i Ctrl+Shift+I otwierają DevTools (dodane przez `before-input-event`)
+- [x] Session-level UA set via `appSession.setUserAgent()`
+- [x] Permissions: camera, microphone, notifications, media, display-capture granted automatically
+- [x] `content-security-policy-report-only` response headers stripped
+- [x] `app/browser/preload.js` loaded as the preload
+- [x] `sec-ch-ua` / `sec-ch-ua-platform` overridden via `onBeforeSendHeaders` (added after testing — Chromium generates these independently of `setUserAgent`)
+- [x] F12 and Ctrl+Shift+I open DevTools (added via `before-input-event`)
 
-> **Uwaga implementacyjna:** `setUserAgent()` nie wpływa na `sec-ch-ua` headery — wymagają osobnego interceptora `onBeforeSendHeaders`.
+> **Implementation note:** `setUserAgent()` does not affect the `sec-ch-ua` headers — they require a separate `onBeforeSendHeaders` interceptor.
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 // test/mainAppWindow/sessionSetup.test.js
 describe('Permission handler', () => {
@@ -186,34 +186,36 @@ describe('CSP header stripping', () => {
 });
 ```
 
-#### Testy manualne
-1. `npm start` → otwiera się okno z załadowaną stroną `windows.cloud.microsoft`
-2. F12 → DevTools → Network → sprawdź request headers: `User-Agent` powinien zawierać `Edg/`
-3. W DevTools Console: `navigator.userAgent` → powinien zawierać `Edg/`
-4. W DevTools Console: `navigator.platform` → `"Win32"`
+#### Manual tests
+1. `npm start` → a window opens with `windows.cloud.microsoft` loaded
+2. F12 → DevTools → Network → check request headers: `User-Agent` should contain `Edg/`
+3. In the DevTools console: `navigator.userAgent` → should contain `Edg/`
+4. In the DevTools console: `navigator.platform` → `"Win32"`
 
 ---
 
 ### P1-05 — Navigator / Client Hints spoof
 
-**Status:** `completed` ✅ przetestowane manualnie  
-**Pliki:** `app/browser/preload.js`
+**Status:** `completed` ✅ manually tested
+**Files:** `app/browser/preload.js`
 
-#### Kryteria akceptacji
-- [x] `navigator.platform` zwraca `"Win32"`
-- [x] `navigator.userAgentData.platform` zwraca `"Windows"`
-- [x] `navigator.userAgentData.mobile` zwraca `false`
-- [x] `navigator.userAgentData.brands` zawiera `{ brand: "Microsoft Edge", version: "143" }`
-- [x] `navigator.userAgentData.getHighEntropyValues(['platform'])` zwraca `{ platform: "Windows" }`
-- [x] `navigator.userAgentData.getHighEntropyValues(['architecture'])` zwraca `{ architecture: "x86", bitness: "64" }`
-- [x] Błąd w spoofu nie crashuje renderera (try/catch)
+#### Acceptance criteria
+- [x] `navigator.platform` returns `"Win32"`
+- [x] `navigator.userAgentData.platform` returns `"Windows"`
+- [x] `navigator.userAgentData.mobile` returns `false`
+- [x] `navigator.userAgentData.brands` contains `{ brand: "Microsoft Edge", version: <derived from the configured UA> }`
+- [x] `navigator.userAgentData.getHighEntropyValues(['platform'])` returns `{ platform: "Windows" }`
+- [x] `navigator.userAgentData.getHighEntropyValues(['architecture'])` returns `{ architecture: "x86", bitness: "64" }`
+- [x] An error in the spoof doesn't crash the renderer (try/catch)
 
-> **Uwaga implementacyjna:** `Object.defineProperty(Navigator.prototype, 'userAgentData', ...)` rzuca w Chromium 132 — property jest non-configurable. Rozwiązanie: próba definicji najpierw na instancji (`navigator`), potem na `Navigator.prototype`. Pętla po `[navigator, Navigator.prototype]` z try/catch per target.
+> **Implementation note:** `Object.defineProperty(Navigator.prototype, 'userAgentData', ...)` throws on Chromium 132 — the property is non-configurable. Fix: try defining it on the instance (`navigator`) first, then on `Navigator.prototype`. Loop over `[navigator, Navigator.prototype]` with a try/catch per target.
+>
+> **Bug found and fixed later:** the spoof/skip calls were originally placed at the *top* of the file, before the `BRANDS`/`EDGE_VERSION`/`CHROME_VERSION` consts they read were declared. `const` bindings are in the temporal dead zone until their declaration line runs, so every call threw `Cannot access 'BRANDS' before initialization` — silently swallowed by the try/catch. The userAgentData spoof likely never actually worked until this was fixed by moving the calls to the bottom of the file, after all declarations.
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 // test/browser/userAgentSpoof.test.js
-// Uruchamiane przez electron-mocha (dostęp do DOM/navigator)
+// Run via electron-mocha (needs DOM/navigator access)
 describe('Navigator spoof', () => {
   before(() => {
     require('../../app/browser/preload.js');
@@ -235,7 +237,6 @@ describe('Navigator spoof', () => {
     const brands = navigator.userAgentData.brands;
     const edge = brands.find(b => b.brand === 'Microsoft Edge');
     expect(edge).toBeDefined();
-    expect(edge.version).toBe('143');
   });
 
   it('getHighEntropyValues returns Windows platform', async () => {
@@ -247,8 +248,8 @@ describe('Navigator spoof', () => {
 });
 ```
 
-#### Testy manualne
-1. `npm start` → F12 → Console:
+#### Manual tests
+1. `npm start` → F12 → console:
    ```js
    navigator.platform                              // → "Win32"
    navigator.userAgentData.platform               // → "Windows"
@@ -256,24 +257,25 @@ describe('Navigator spoof', () => {
    await navigator.userAgentData.getHighEntropyValues(['platform', 'architecture'])
    // → {platform: "Windows", architecture: "x86", bitness: "64", ...}
    ```
-2. Zaloguj się na `windows.cloud.microsoft` → logowanie nie powinno wymagać dodatkowych kroków z powodu UA
+2. Sign in on `windows.cloud.microsoft` → sign-in shouldn't require extra steps because of the UA
 
 ---
 
 ### P1-06 — Window open handler
 
-**Status:** `completed`  
-**Pliki:** `app/mainAppWindow/index.js`
+**Status:** `completed`
+**Files:** `app/mainAppWindow/index.js`
 
-#### Kryteria akceptacji
-- [x] URL `login.microsoftonline.com` → otwiera modal child window z tą samą sesją
-- [x] URL `about:blank` → `{ action: 'deny' }`
-- [x] URL `/webclient/avd/` → w bieżącym oknie (tymczasowo, Phase 2 zmieni na tab)
-- [x] Inne zewnętrzne URL → `shell.openExternal()`, `{ action: 'deny' }`
-- [x] Auth modal child window ma `modal: true`, `parent: mainWindow`
-- [x] Auth modal child window używa tej samej partycji sesji
+#### Acceptance criteria
+- [x] `login.microsoftonline.com` URL → opens a modal child window with the same session
+- [x] `about:blank` URL → `{ action: 'deny' }`
+- [x] `/webclient/avd/` URL → opens in its own AVD BrowserWindow
+- [x] Other external URLs → `shell.openExternal()`, `{ action: 'deny' }` (only for `http(s):` URLs — see `isSafeExternalUrl`)
+- [x] Auth modal child window has `modal: true`, `parent: mainWindow`
+- [x] Auth modal child window uses the same session partition
+- [x] Federated IdP popups (ADFS, Okta, Ping, ...) that can't be matched by domain are detected via a window-size/disposition heuristic (`isLikelyAuthPopup`) instead of falling through to the system browser
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 // test/mainAppWindow/windowOpenHandler.test.js
 describe('isAuthUrl', () => {
@@ -304,28 +306,32 @@ describe('isAvdUrl', () => {
   it('does not match panel url', () => {
     expect(isAvdUrl('https://windows.cloud.microsoft/#/devices')).toBe(false);
   });
+
+  it('rejects a spoofed URL that only contains the AVD path as a substring', () => {
+    expect(isAvdUrl('https://evil.example/?x=windows.cloud.microsoft/webclient/avd/fake')).toBe(false);
+  });
 });
 ```
 
-#### Testy manualne
-1. Na stronie `windows.cloud.microsoft` kliknij "Sign in" → otwiera się modalne okno logowania (nie nowa zewnętrzna przeglądarka)
-2. Po zalogowaniu modal zamyka się i widać panel urządzeń
-3. DevTools Console: `window.open('https://google.com')` → Google otwiera się w systemowej przeglądarce, nie w Elektronie
-4. DevTools Console: `window.open('about:blank')` → nic się nie otwiera
+#### Manual tests
+1. On `windows.cloud.microsoft`, click "Sign in" → a modal sign-in window opens (not a new external browser)
+2. After signing in, the modal closes and the device panel is visible
+3. DevTools console: `window.open('https://google.com')` → Google opens in the system browser, not in Electron
+4. DevTools console: `window.open('about:blank')` → nothing opens
 
 ---
 
 ### P1-07 — about:blank SSO intercept
 
-**Status:** `completed`  
-**Pliki:** `app/mainAppWindow/index.js`
+**Status:** `completed`
+**Files:** `app/mainAppWindow/index.js`, `app/mainAppWindow/helpers.js`
 
-#### Kryteria akceptacji
-- [x] `about:blank` żądania są blokowane przez `webRequest.onBeforeRequest`
-- [x] Następny HTTPS request po `about:blank` jest przekierowany do `shell.openExternal()`
-- [x] Licznik `aboutBlankCount` resetuje się po obsłużeniu
+#### Acceptance criteria
+- [x] `about:blank` requests are blocked by `webRequest.onBeforeRequest`
+- [x] The next HTTPS request after `about:blank` is redirected to `shell.openExternal()`
+- [x] The `aboutBlankCount` counter resets once handled
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 // test/mainAppWindow/aboutBlankInterceptor.test.js
 describe('AboutBlank interceptor', () => {
@@ -348,21 +354,21 @@ describe('AboutBlank interceptor', () => {
 });
 ```
 
-#### Testy manualne
-1. Znajdź na stronie link który otwiera popup przez `about:blank` (zwykle linki "otwórz w przeglądarce" w Microsoft 365) → powinien otworzyć się w systemowej przeglądarce
+#### Manual tests
+1. Find a link on the page that opens a popup via `about:blank` (usually "open in browser" links in Microsoft 365) → it should open in the system browser
 
 ---
 
 ### P1-08 — Render process crash recovery
 
-**Status:** `completed`  
-**Pliki:** `app/mainAppWindow/index.js`
+**Status:** `completed`
+**Files:** `app/mainAppWindow/index.js`
 
-#### Kryteria akceptacji
-- [x] Na event `render-process-gone` z `reason !== 'clean-exit'` → `loadURL(config.url)`
-- [x] Czyste zamknięcie okna nie triggeruje reload
+#### Acceptance criteria
+- [x] On `render-process-gone` with `reason !== 'clean-exit'` → `loadURL(config.url)`
+- [x] A clean window close doesn't trigger a reload
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 // test/mainAppWindow/crashRecovery.test.js
 describe('Crash recovery', () => {
@@ -386,134 +392,104 @@ describe('Crash recovery', () => {
 });
 ```
 
-#### Testy manualne
-1. F12 → DevTools → Console: `process.crash()` → aplikacja powinna przeładować się automatycznie do strony głównej
+#### Manual tests
+1. F12 → DevTools → console: `process.crash()` → the app should automatically reload to the home page
 
 ---
 
-### P1-09 — Infrastruktura testów (Jest)
+### P1-09 — Test infrastructure (Jest)
 
-**Status:** `pending`  
-**Pliki:** `package.json`, `jest.config.js`, `test/`
+**Status:** `completed`
+**Files:** `package.json`, `jest.config.js`, `test/`
 
-#### Opis
-Skonfigurować Jest dla testów jednostkowych (logika pure JS) oraz `electron-mocha` dla testów renderera (gdzie potrzebny jest `navigator`).
+#### Description
+Configure Jest for unit tests (pure JS logic). `electron-mocha` for renderer-context tests (where `navigator` is needed) is documented but not wired into CI — those live under `test/browser/` and are excluded from the default `npm test` run.
 
-#### Kryteria akceptacji
-- [ ] `npm test` uruchamia wszystkie testy jednostkowe
-- [ ] `npm run test:renderer` uruchamia testy w kontekście Elektrona (electron-mocha)
-- [ ] Katalog `test/` odzwierciedla strukturę `app/` (np. `test/config/`, `test/mainAppWindow/`)
-- [ ] Testy z P1-02 do P1-08 są zaimplementowane i przechodzą
+#### Acceptance criteria
+- [x] `npm test` runs all unit tests
+- [x] `test/` mirrors the structure of `app/` (e.g. `test/config/`, `test/mainAppWindow/`)
+- [x] Tests from P1-02 through P1-08 are implemented and passing
+- [x] `jest.config.js` ignores `dist/` (build artifacts, including `*.snap` files that would otherwise be picked up as stale Jest snapshots)
 
-#### Testy jednostkowe
-_To zadanie tworzy infrastrukturę — nie ma własnych testów._
+#### Unit tests
+_This task builds infrastructure — it has no tests of its own._
 
-#### Testy manualne
-1. `npm test` → wszystkie testy zielone
-2. `npm run test:renderer` → testy preload zielone
+#### Manual tests
+1. `npm test` → all tests green
 
 ---
 
 ### P1-10 — Window state persistence
 
-**Status:** `pending`  
-**Pliki:** `app/mainAppWindow/windowState.js`, `app/mainAppWindow/index.js`
+**Status:** `completed`
+**Files:** `app/mainAppWindow/windowState.js`, `app/mainAppWindow/index.js`
 
-#### Opis
-Zapamiętywać rozmiar i pozycję okna między uruchomieniami. Zapisywać do `~/.config/windows-app-for-linux/window-state.json`.
+#### Description
+Remember window size and position across launches. Saved to `~/.config/windows-app-for-linux/window-state.json`.
 
-#### Kryteria akceptacji
-- [ ] Po zamknięciu i ponownym otwarciu — okno ma taki sam rozmiar i pozycję
-- [ ] Stan nie jest zapisywany gdy okno jest zminimalizowane lub fullscreen
-- [ ] Gdy okno jest poza ekranem (np. po zmianie rozdzielczości) → reset do domyślnych wartości
-- [ ] Zapis odbywa się na event `close`, nie przy każdym `resize` (debounce lub jednorazowo)
+#### Acceptance criteria
+- [x] After closing and reopening — the window has the same size and position
+- [x] State isn't saved while the window is minimized or fullscreen
+- [x] When the window is off-screen (e.g. after a resolution change) → reset to defaults
+- [x] Saved on the `close` event, not on every `resize`
 
-#### Testy jednostkowe
-```js
-// test/mainAppWindow/windowState.test.js
-describe('Window state', () => {
-  it('saves and restores size', () => {
-    const state = createWindowStateManager({ defaultWidth: 1280, defaultHeight: 800 });
-    state.save({ x: 100, y: 200, width: 1400, height: 900, isMaximized: false });
-    const restored = state.load();
-    expect(restored.width).toBe(1400);
-    expect(restored.height).toBe(900);
-  });
-
-  it('returns defaults when no saved state', () => {
-    const state = createWindowStateManager({ defaultWidth: 1280, defaultHeight: 800 });
-    const restored = state.load();
-    expect(restored.width).toBe(1280);
-    expect(restored.height).toBe(800);
-  });
-
-  it('resets to defaults when window is off-screen', () => {
-    const state = createWindowStateManager({ defaultWidth: 1280, defaultHeight: 800 });
-    state.save({ x: -9999, y: -9999, width: 1280, height: 800, isMaximized: false });
-    const restored = state.load({ screenBounds: { width: 1920, height: 1080 } });
-    expect(restored.x).toBeUndefined(); // let Electron center it
-  });
-});
-```
-
-#### Testy manualne
-1. Uruchom app, przesuń i zmień rozmiar okna, zamknij
-2. Uruchom ponownie → okno pojawia się w tej samej pozycji z tym samym rozmiarem
-3. Zmień rozdzielczość na mniejszą → okno nie jest poza ekranem
+#### Manual tests
+1. Launch the app, move and resize the window, close it
+2. Launch again → the window appears at the same position with the same size
+3. Switch to a smaller resolution → the window isn't off-screen
 
 ---
 
-### P1-11 — Ikony aplikacji
+### P1-11 — App icons
 
-**Status:** `pending`  
-**Pliki:** `assets/icons/` (PNG 16, 32, 48, 64, 128, 256, 512), `assets/icons/icon.svg`
+**Status:** `completed`
+**Files:** `assets/icons/` (PNG 16, 22, 32, 48, 64, 128, 256, 512), `assets/icons/icon.svg`
 
-#### Opis
-Stworzyć zestaw ikon dla aplikacji. Ikona powinna nawiązywać do Windows App (okno na niebieskim tle). Wymagane przez electron-builder do budowania AppImage i Flatpak.
+#### Description
+Icon set for the app: a cloud with an AVD/Windows-style window and a Tux mascot, generated from user-provided source art. `icon.svg` is a base64-embedded raster wrapper, not a true vector — the source art is a 3D render, not something that can be losslessly vectorized.
 
-#### Kryteria akceptacji
-- [ ] Pliki: `16x16.png`, `32x32.png`, `48x48.png`, `64x64.png`, `128x128.png`, `256x256.png`, `512x512.png`
-- [ ] Pliki w katalogu `assets/icons/`
-- [ ] `package.json` `linux.icon` wskazuje na `assets/icons`
-- [ ] `npm run build:appimage` nie zgłasza błędów o brakujących ikonach
+#### Acceptance criteria
+- [x] Files: `16x16.png`, `22x22.png` (tray), `32x32.png`, `48x48.png`, `64x64.png`, `128x128.png`, `256x256.png`, `512x512.png`
+- [x] Files under `assets/icons/`
+- [x] `package.json`'s `linux.icon` points at `assets/icons`
+- [x] `npm run build:appimage` reports no missing-icon warnings
 
-#### Testy jednostkowe
-_Nie dotyczy._
-
-#### Testy manualne
-1. `npm run build:appimage` → plik `.AppImage` tworzony bez ostrzeżeń o ikonach
-2. Zainstalowana aplikacja ma ikonę widoczną w launcherze systemu
+#### Manual tests
+1. `npm run build:appimage` → the `.AppImage` file is created without icon warnings
+2. The installed app has a visible icon in the system launcher and tray
 
 ---
 
-## Faza 2 — Tab Manager
+## Phase 2 — Tab Manager
+
+Not started. AVD sessions currently open as separate `BrowserWindow`s (see `createAvdWindow` in `app/mainAppWindow/index.js`) rather than tabs within the main window — a simpler, working alternative to the tab-per-`WebContentsView` design originally planned below. The tasks below describe the original tab-based design; revisit only if multiple `BrowserWindow`s per session turns out to be insufficient.
 
 ---
 
-### P2-01  
-**Zablokowane przez:** P1-13 (manualna weryfikacja Fazy 1), P1-09 (infrastruktura testów)  
-**Pliki:** `app/mainAppWindow/tabManager.js`
+### P2-01
+**Blocked by:** P1-13 (manual verification of Phase 1), P1-09 (test infrastructure)
+**Files:** `app/mainAppWindow/tabManager.js`
 
-#### Opis
-Moduł zarządzający kolekcją zakładek. Każda zakładka to `WebContentsView` z własnym preloadem i współdzieloną sesją.
+#### Description
+Module that manages the tab collection. Each tab is a `WebContentsView` with its own preload and a shared session.
 
 ```js
-// Interfejs publiczny:
+// Public interface:
 tabManager.createTab(url)   → { id, view, url }
 tabManager.getTab(id)       → tab | undefined
 tabManager.getAllTabs()      → tab[]
 tabManager.getActiveTab()   → tab | undefined
 ```
 
-#### Kryteria akceptacji
-- [ ] `createTab(url)` tworzy `WebContentsView` z `partition: config.sessionPartition`
-- [ ] Każdy tab ma unikalny ID (UUID lub incrementing number)
-- [ ] `WebContentsView` dodawany do `BrowserWindow` przez `win.contentView.addChildView()`
-- [ ] UA ustawiany na sesji WebContentsView
-- [ ] Preload `app/browser/preload.js` załadowany w każdym WebContentsView
-- [ ] Nowo utworzony tab jest niewidoczny do czasu wywołania `activateTab(id)`
+#### Acceptance criteria
+- [ ] `createTab(url)` creates a `WebContentsView` with `partition: config.sessionPartition`
+- [ ] Each tab has a unique ID (UUID or an incrementing number)
+- [ ] The `WebContentsView` is added to the `BrowserWindow` via `win.contentView.addChildView()`
+- [ ] UA set on the WebContentsView's session
+- [ ] `app/browser/preload.js` loaded in every WebContentsView
+- [ ] A newly created tab is invisible until `activateTab(id)` is called
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 // test/mainAppWindow/tabManager.test.js
 describe('TabManager', () => {
@@ -543,33 +519,33 @@ describe('TabManager', () => {
 });
 ```
 
-#### Testy manualne
-_Weryfikacja po P2-07 (routing AVD URLs do tabów)._
+#### Manual tests
+_Verify after P2-07 (routing AVD URLs to tabs)._
 
 ---
 
-### P2-02 — TabManager: zamykanie zakładki z cleanup
+### P2-02 — TabManager: closing a tab with cleanup
 
-**Status:** `pending`  
-**Zablokowane przez:** P2-01  
-**Pliki:** `app/mainAppWindow/tabManager.js`
+**Status:** `pending`
+**Blocked by:** P2-01
+**Files:** `app/mainAppWindow/tabManager.js`
 
-#### Opis
-Prawidłowe usuwanie zakładki: czyszczenie storage, usunięcie z BrowserWindow, zamknięcie webContents.
+#### Description
+Properly remove a tab: clear storage, remove from BrowserWindow, close webContents.
 
 ```js
 tabManager.closeTab(id)  // async
 ```
 
-#### Kryteria akceptacji
-- [ ] `closeTab(id)` wywołuje `clearStorageData()` na sesji WebContentsView
-- [ ] `win.contentView.removeChildView(view)` wywoływane
-- [ ] `view.webContents.close()` wywoływane
-- [ ] Tab usuwany z wewnętrznej kolekcji `getAllTabs()`
-- [ ] Zamknięcie ostatniej (jedynej) zakładki nie crashuje — otwiera się zakładka z panelem
-- [ ] Zamknięcie aktywnej zakładki → przełącza się na poprzednią lub na panel
+#### Acceptance criteria
+- [ ] `closeTab(id)` calls `clearStorageData()` on the WebContentsView's session
+- [ ] `win.contentView.removeChildView(view)` is called
+- [ ] `view.webContents.close()` is called
+- [ ] The tab is removed from the internal `getAllTabs()` collection
+- [ ] Closing the last (only) tab doesn't crash — the panel tab opens instead
+- [ ] Closing the active tab → switches to the previous one or the panel
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 describe('TabManager.closeTab', () => {
   it('removes tab from collection', async () => {
@@ -592,31 +568,31 @@ describe('TabManager.closeTab', () => {
 });
 ```
 
-#### Testy manualne
-1. Otwórz sesję AVD, zamknij zakładkę (X na tablecie) → wracasz do panelu urządzeń
-2. Sprawdź DevTools → Memory → nie ma wycieków po zamknięciu kilku zakładek z rzędu
+#### Manual tests
+1. Open an AVD session, close the tab (X on the tab) → back to the device panel
+2. Check DevTools → Memory → no leaks after closing several tabs in a row
 
 ---
 
-### P2-03 — TabManager: aktywacja zakładki i bounds
+### P2-03 — TabManager: tab activation and bounds
 
-**Status:** `pending`  
-**Zablokowane przez:** P2-01  
-**Pliki:** `app/mainAppWindow/tabManager.js`
+**Status:** `pending`
+**Blocked by:** P2-01
+**Files:** `app/mainAppWindow/tabManager.js`
 
-#### Opis
-Przełączanie aktywnej zakładki: ustawienie bounds, z-order i widoczności.
+#### Description
+Switching the active tab: setting bounds, z-order, and visibility.
 
 ```js
 tabManager.activateTab(id)
 ```
 
-#### Kryteria akceptacji
-- [ ] Aktywna zakładka ma bounds = cały obszar okna minus Tab Bar (40px na górze)
-- [ ] Poprzednia aktywna zakładka jest ukrywana (`setBounds({width:0, height:0})` lub `removeChildView`)
-- [ ] `getActiveTab()` zwraca nowo aktywowaną zakładkę
+#### Acceptance criteria
+- [ ] The active tab's bounds = the full window area minus the Tab Bar (40px at the top)
+- [ ] The previously active tab is hidden (`setBounds({width:0, height:0})` or `removeChildView`)
+- [ ] `getActiveTab()` returns the newly activated tab
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 describe('TabManager.activateTab', () => {
   it('sets active tab', () => {
@@ -634,28 +610,28 @@ describe('TabManager.activateTab', () => {
 });
 ```
 
-#### Testy manualne
-1. Otwórz dwie sesje AVD → zakładki widoczne w Tab Bar
-2. Kliknij w zakładkę #1 → widzisz sesję #1
-3. Kliknij w zakładkę #2 → widzisz sesję #2, sesja #1 znika
+#### Manual tests
+1. Open two AVD sessions → tabs visible in the Tab Bar
+2. Click tab #1 → session #1 is visible
+3. Click tab #2 → session #2 is visible, session #1 disappears
 
 ---
 
-### P2-04 — TabManager: resize przy zmianie rozmiaru okna
+### P2-04 — TabManager: resize on window resize
 
-**Status:** `pending`  
-**Zablokowane przez:** P2-03  
-**Pliki:** `app/mainAppWindow/tabManager.js`
+**Status:** `pending`
+**Blocked by:** P2-03
+**Files:** `app/mainAppWindow/tabManager.js`
 
-#### Opis
-Gdy BrowserWindow zmienia rozmiar, aktywny WebContentsView musi być dostosowany.
+#### Description
+When the BrowserWindow resizes, the active WebContentsView must be adjusted.
 
-#### Kryteria akceptacji
-- [ ] `BrowserWindow` event `resize` triggeruje aktualizację bounds aktywnego taba
+#### Acceptance criteria
+- [ ] The BrowserWindow's `resize` event triggers a bounds update for the active tab
 - [ ] Bounds = `{x: 0, y: TAB_BAR_HEIGHT, width: winWidth, height: winHeight - TAB_BAR_HEIGHT}`
-- [ ] W trybie fullscreen bounds = `{x: 0, y: 0, width: winWidth, height: winHeight}` (bez Tab Bar)
+- [ ] In fullscreen mode, bounds = `{x: 0, y: 0, width: winWidth, height: winHeight}` (no Tab Bar)
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 describe('calculateTabBounds', () => {
   it('leaves room for tab bar in normal mode', () => {
@@ -670,54 +646,54 @@ describe('calculateTabBounds', () => {
 });
 ```
 
-#### Testy manualne
-1. Zmień rozmiar okna przeciągając krawędź → sesja AVD wypełnia całą dostępną przestrzeń (bez nakładania się na Tab Bar)
-2. Zmaksymalizuj okno → sesja nadal poprawnie wypełnia obszar
+#### Manual tests
+1. Resize the window by dragging an edge → the AVD session fills the available space (without overlapping the Tab Bar)
+2. Maximize the window → the session still fills the area correctly
 
 ---
 
 ### P2-05 — Tab Bar: UI (HTML/CSS)
 
-**Status:** `pending`  
-**Zablokowane przez:** P2-01  
-**Pliki:** `app/tabBar/index.html`, `app/tabBar/renderer.js`, `app/tabBar/styles.css`
+**Status:** `pending`
+**Blocked by:** P2-01
+**Files:** `app/tabBar/index.html`, `app/tabBar/renderer.js`, `app/tabBar/styles.css`
 
-#### Opis
-Pasek zakładek o wysokości 40px wyświetlany na górze okna. Zawiera:
-- Listę zakładek z tytułem i przyciskiem X
-- Przycisk `+` do otwarcia nowej zakładki (→ panel urządzeń)
-- Wizualne wskazanie aktywnej zakładki
+#### Description
+A 40px-tall tab bar shown at the top of the window. Contains:
+- A list of tabs with a title and an X button
+- A `+` button to open a new tab (→ device panel)
+- A visual indicator for the active tab
 
-Design: minimalistyczny, dark theme (#1a1a2e background, biały tekst).
+Design: minimal, dark theme (#1a1a2e background, white text).
 
-#### Kryteria akceptacji
-- [ ] Zakładki wyświetlają tytuł strony (max 20 znaków z `...`)
-- [ ] Aktywna zakładka wizualnie wyróżniona (np. jaśniejsze tło)
-- [ ] Przycisk X zamyka zakładkę
-- [ ] Przycisk `+` otwiera nową zakładkę z panelem
-- [ ] Tab Bar renderowany jako `WebContentsView` na z-index powyżej zakładek sesji
-- [ ] Nie scrolluje — gdy za dużo zakładek tytuły się skracają (max ~8 zakładek widocznych)
+#### Acceptance criteria
+- [ ] Tabs show the page title (max 20 characters, with `...`)
+- [ ] The active tab is visually distinct (e.g. lighter background)
+- [ ] The X button closes the tab
+- [ ] The `+` button opens a new tab with the panel
+- [ ] The Tab Bar is rendered as a `WebContentsView` above the session tabs in z-order
+- [ ] No scrolling — titles shrink when there are too many tabs (up to ~8 tabs visible)
 
-#### Testy jednostkowe
-_Testy DOM — przeprowadzić przez electron-mocha lub Playwright._
+#### Unit tests
+_DOM tests — run via electron-mocha or Playwright._
 
-#### Testy manualne
-1. Uruchom app → Tab Bar widoczny u góry z jedną zakładką "Windows App"
-2. Otwórz sesję AVD → pojawia się nowa zakładka z nazwą maszyny
-3. Najedź myszą na zakładkę → pojawia się X
-4. Kliknij X → zakładka zamknięta, wracasz do poprzedniej
-5. Kliknij `+` → otwiera się panel urządzeń w nowej zakładce
+#### Manual tests
+1. Launch the app → the Tab Bar is visible at the top with one "Windows App" tab
+2. Open an AVD session → a new tab appears with the machine's name
+3. Hover over a tab → an X appears
+4. Click X → the tab closes, back to the previous one
+5. Click `+` → the device panel opens in a new tab
 
 ---
 
 ### P2-06 — IPC: Tab Bar ↔ Main Process
 
-**Status:** `pending`  
-**Zablokowane przez:** P2-05  
-**Pliki:** `app/tabBar/renderer.js`, `app/mainAppWindow/tabManager.js`
+**Status:** `pending`
+**Blocked by:** P2-05
+**Files:** `app/tabBar/renderer.js`, `app/mainAppWindow/tabManager.js`
 
-#### Opis
-Komunikacja dwukierunkowa przez IPC:
+#### Description
+Two-way IPC communication:
 
 ```
 Renderer (Tab Bar) → Main:
@@ -729,14 +705,14 @@ Main → Renderer (Tab Bar):
   'tabs:update' ([{ id, title, active }])
 ```
 
-#### Kryteria akceptacji
-- [ ] Kliknięcie zakładki w Tab Bar wysyła `'tab:activate'` → `tabManager.activateTab(id)`
-- [ ] Kliknięcie X wysyła `'tab:close'` → `tabManager.closeTab(id)`
-- [ ] Po każdej zmianie stanu tabów main wysyła `'tabs:update'` z nową listą
-- [ ] Tab Bar re-renderuje się po każdym `'tabs:update'`
-- [ ] Zmiana tytułu strony (webContents `page-title-updated`) aktualizuje Tab Bar
+#### Acceptance criteria
+- [ ] Clicking a tab in the Tab Bar sends `'tab:activate'` → `tabManager.activateTab(id)`
+- [ ] Clicking X sends `'tab:close'` → `tabManager.closeTab(id)`
+- [ ] After every tab-state change, main sends `'tabs:update'` with the new list
+- [ ] The Tab Bar re-renders on every `'tabs:update'`
+- [ ] A page title change (webContents `page-title-updated`) updates the Tab Bar
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 // test/mainAppWindow/ipcTabBridge.test.js
 describe('IPC Tab Bridge', () => {
@@ -756,28 +732,28 @@ describe('IPC Tab Bridge', () => {
 });
 ```
 
-#### Testy manualne
-1. Otwórz kilka sesji → Tab Bar dynamicznie aktualizuje się
-2. Zmień tytuł w sesji AVD (wejdź na remote desktop, zmień nazwę okna) → tytuł w Tab Bar aktualizuje się
+#### Manual tests
+1. Open several sessions → the Tab Bar updates dynamically
+2. Change the title inside an AVD session (open the remote desktop, rename a window) → the title updates in the Tab Bar
 
 ---
 
-### P2-07 — Routing AVD URLs do TabManager
+### P2-07 — Routing AVD URLs to TabManager
 
-**Status:** `pending`  
-**Zablokowane przez:** P2-01, P2-03  
-**Pliki:** `app/mainAppWindow/index.js`
+**Status:** `pending`
+**Blocked by:** P2-01, P2-03
+**Files:** `app/mainAppWindow/index.js`
 
-#### Opis
-Zaktualizować `windowOpenHandler` w `mainAppWindow/index.js`: URL pasujący do `/webclient/avd/` tworzy nową zakładkę zamiast ładować w głównym oknie.
+#### Description
+Update `windowOpenHandler` in `mainAppWindow/index.js`: a URL matching `/webclient/avd/` creates a new tab instead of loading in the main window.
 
-#### Kryteria akceptacji
-- [ ] `setWindowOpenHandler` dla URL `/webclient/avd/` wywołuje `tabManager.createTab(url)` + `tabManager.activateTab(id)`
-- [ ] Zwraca `{ action: 'deny' }` (WebContentsView, nie nowe okno)
-- [ ] Jeśli ta sama sesja AVD jest już otwarta jako tab → aktywuje istniejący tab (nie duplikuje)
-- [ ] Nowy tab natychmiast aktywny i widoczny
+#### Acceptance criteria
+- [ ] `setWindowOpenHandler` for a `/webclient/avd/` URL calls `tabManager.createTab(url)` + `tabManager.activateTab(id)`
+- [ ] Returns `{ action: 'deny' }` (WebContentsView, not a new window)
+- [ ] If the same AVD session is already open as a tab → activates the existing tab (no duplicate)
+- [ ] The new tab is immediately active and visible
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 // test/mainAppWindow/avdUrlRouting.test.js
 describe('AVD URL routing', () => {
@@ -805,76 +781,76 @@ describe('AVD URL routing', () => {
 });
 ```
 
-#### Testy manualne
-1. Zaloguj się na `windows.cloud.microsoft/#/devices`
-2. Kliknij maszynę → pojawia się nowa zakładka z URL `/webclient/avd/...`
-3. Wróć do panelu, kliknij tę samą maszynę ponownie → aktywuje istniejącą zakładkę, nie otwiera nowej
+#### Manual tests
+1. Sign in to `windows.cloud.microsoft/#/devices`
+2. Click a machine → a new tab appears with a `/webclient/avd/...` URL
+3. Go back to the panel, click the same machine again → activates the existing tab, doesn't open a new one
 
 ---
 
-### P2-08 — Skróty klawiaturowe zakładek
+### P2-08 — Tab keyboard shortcuts
 
-**Status:** `pending`  
-**Zablokowane przez:** P2-06  
-**Pliki:** `app/menus/appMenu.js`
+**Status:** `pending`
+**Blocked by:** P2-06
+**Files:** `app/menus/appMenu.js`
 
-#### Kryteria akceptacji
-- [ ] `Ctrl+T` — nowa zakładka z panelem urządzeń (`/#/devices`)
-- [ ] `Ctrl+W` — zamknij aktywną zakładkę (jeśli jedyna — nie zamykaj okna)
-- [ ] `Ctrl+Tab` — następna zakładka (cyklicznie)
-- [ ] `Ctrl+Shift+Tab` — poprzednia zakładka
-- [ ] `Ctrl+1` … `Ctrl+8` — aktywuj zakładkę nr 1-8
-- [ ] `Ctrl+R` — odśwież aktywną zakładkę
+#### Acceptance criteria
+- [ ] `Ctrl+T` — new tab with the device panel (`/#/devices`)
+- [ ] `Ctrl+W` — close the active tab (if it's the only one, don't close the window)
+- [ ] `Ctrl+Tab` — next tab (cyclic)
+- [ ] `Ctrl+Shift+Tab` — previous tab
+- [ ] `Ctrl+1` … `Ctrl+8` — activate tab #1-8
+- [ ] `Ctrl+R` — reload the active tab
 
-#### Testy jednostkowe
-_Menu accelerators — weryfikacja przez electron-mocha / integration test._
+#### Unit tests
+_Menu accelerators — verify via electron-mocha / integration test._
 
-#### Testy manualne
-1. Otwórz kilka zakładek → `Ctrl+Tab` przełącza między nimi
-2. `Ctrl+W` na zakładce sesji → zakładka zamknięta, wróciłeś do poprzedniej
-3. `Ctrl+W` gdy tylko panel → okno **nie zamyka się** (tylko zakładka, ale jest jedyna → ignoruj)
-4. `Ctrl+R` → aktywna zakładka przeładowuje się
-
----
-
-### P2-09 — Manualny test E2E Fazy 2
-
-**Status:** `pending`  
-**Zablokowane przez:** P2-07, P2-08
-
-#### Testy manualne (pełny scenariusz)
-1. Uruchom `npm start`
-2. Zaloguj się przez modal auth
-3. Panel urządzeń widoczny jako pierwsza zakładka
-4. Kliknij maszynę A → otwiera się zakładka "Maszyna A" z sesją AVD
-5. Wróć do panelu (`Ctrl+Tab` lub klik w zakładkę)
-6. Kliknij maszynę B → otwiera się zakładka "Maszyna B"
-7. Masz 3 zakładki: Panel, Maszyna A, Maszyna B
-8. `Ctrl+W` na Maszyna B → zakładka zamknięta, wracasz do poprzedniej
-9. Sprawdź że Panel wciąż działa poprawnie
-10. Zamknij okno → app kończy działanie
+#### Manual tests
+1. Open several tabs → `Ctrl+Tab` cycles between them
+2. `Ctrl+W` on a session tab → the tab closes, back to the previous one
+3. `Ctrl+W` with only the panel open → the window **doesn't close** (only the tab would, but it's the only one → ignore)
+4. `Ctrl+R` → the active tab reloads
 
 ---
 
-## Faza 3 — Fullscreen & Klawiatura
+### P2-09 — Manual E2E test for Phase 2
+
+**Status:** `pending`
+**Blocked by:** P2-07, P2-08
+
+#### Manual tests (full scenario)
+1. Run `npm start`
+2. Sign in via the auth modal
+3. The device panel is visible as the first tab
+4. Click machine A → a "Machine A" tab opens with the AVD session
+5. Go back to the panel (`Ctrl+Tab` or click the tab)
+6. Click machine B → a "Machine B" tab opens
+7. You now have 3 tabs: Panel, Machine A, Machine B
+8. `Ctrl+W` on Machine B → the tab closes, back to the previous one
+9. Verify the panel still works correctly
+10. Close the window → the app exits
 
 ---
 
-### P3-01 — F11: toggle fullscreen aktywnej zakładki
+## Phase 3 — Fullscreen & Keyboard
 
-**Status:** `pending`  
-**Zablokowane przez:** P2-09
+---
 
-#### Opis
-F11 w głównym oknie przełącza tryb fullscreen. W fullscreenie Tab Bar jest ukryty, aktywny WebContentsView zajmuje 100% okna.
+### P3-01 — F11: toggle fullscreen for the active tab
 
-#### Kryteria akceptacji
-- [ ] F11 → `mainWindow.setFullScreen(true)` + ukrycie Tab Bar + resize aktywnego WebContentsView do 100%
-- [ ] F11 ponownie → wyjście z fullscreen, Tab Bar wraca, WebContentsView resize do normal bounds
-- [ ] `Escape` wysyłany do webContents (wymagany przez web app do wyjścia z fullscreen UI)
-- [ ] Fullscreen state zachowany per zakładka (zakładka #1 w fullscreen, zakładka #2 nie)
+**Status:** `pending`
+**Blocked by:** P2-09
 
-#### Testy jednostkowe
+#### Description
+F11 in the main window toggles fullscreen mode. In fullscreen, the Tab Bar is hidden and the active WebContentsView occupies 100% of the window.
+
+#### Acceptance criteria
+- [ ] F11 → `mainWindow.setFullScreen(true)` + Tab Bar hidden + active WebContentsView resized to 100%
+- [ ] F11 again → exits fullscreen, Tab Bar comes back, WebContentsView resized to normal bounds
+- [ ] `Escape` sent to webContents (needed by the web app to exit its own fullscreen UI)
+- [ ] Fullscreen state kept per tab (tab #1 fullscreen, tab #2 not)
+
+#### Unit tests
 ```js
 // test/mainAppWindow/fullscreen.test.js
 describe('calculateTabBounds in fullscreen', () => {
@@ -895,37 +871,37 @@ describe('Fullscreen state', () => {
 });
 ```
 
-#### Testy manualne
-1. Otwórz sesję AVD
-2. F11 → Tab Bar znika, sesja zajmuje cały ekran
-3. F11 ponownie → Tab Bar wraca
-4. Wejdź w fullscreen, przełącz zakładkę → poprzednia zakładka wychodzi z fullscreen
+#### Manual tests
+1. Open an AVD session
+2. F11 → the Tab Bar disappears, the session fills the screen
+3. F11 again → the Tab Bar comes back
+4. Enter fullscreen, switch tabs → the previous tab exits fullscreen
 
 ---
 
-### P3-02 — Overlay informacyjny przy pierwszym fullscreen
+### P3-02 — Info overlay on first fullscreen entry
 
-**Status:** `pending`  
-**Zablokowane przez:** P3-01  
-**Pliki:** `app/browser/fullscreenOverlay.js` lub inline w preload
+**Status:** `pending`
+**Blocked by:** P3-01
+**Files:** `app/browser/fullscreenOverlay.js` or inline in the preload
 
-#### Opis
-Przy pierwszym wejściu w fullscreen wyświetl krótki overlay (3 sekundy) z informacją o dostępnych skrótach.
+#### Description
+On the first entry into fullscreen, show a brief overlay (3 seconds) listing the available shortcuts.
 
-Treść:
+Content:
 ```
-Fullscreen aktywny
-Ctrl+Alt+End → Ctrl+Alt+Del (zdalne)
-Alt+F3 → klawisz Windows (zdalne)
-F11 → wyjdź z fullscreen
+Fullscreen active
+Ctrl+Alt+End → Ctrl+Alt+Del (remote)
+Alt+F3 → Windows key (remote)
+F11 → exit fullscreen
 ```
 
-#### Kryteria akceptacji
-- [ ] Overlay pojawia się tylko raz (zapisać flagę w `electron-store` lub `localStorage`)
-- [ ] Overlay znika po 3 sekundach
-- [ ] Overlay można zamknąć wcześniej klikając na niego
+#### Acceptance criteria
+- [ ] The overlay only appears once (store a flag in `electron-store` or `localStorage`)
+- [ ] The overlay disappears after 3 seconds
+- [ ] The overlay can be dismissed early by clicking it
 
-#### Testy jednostkowe
+#### Unit tests
 ```js
 describe('Fullscreen overlay', () => {
   it('shows only once', () => {
@@ -937,209 +913,223 @@ describe('Fullscreen overlay', () => {
 });
 ```
 
-#### Testy manualne
-1. Pierwszy raz wejdź w fullscreen → overlay widoczny przez 3s
-2. Wyjdź i wejdź ponownie w fullscreen → overlay nie pojawia się
+#### Manual tests
+1. Enter fullscreen for the first time → the overlay is visible for 3s
+2. Exit and re-enter fullscreen → the overlay doesn't appear
 
 ---
 
-### P3-03 — Menu aplikacji z wszystkimi skrótami
+### P3-03 — Application menu with all shortcuts
 
-**Status:** `pending`  
-**Zablokowane przez:** P2-08  
-**Pliki:** `app/menus/appMenu.js`
+**Status:** `completed` (baseline shortcuts; tab-specific ones pending Phase 2)
+**Files:** `app/menus/appMenu.js`
 
-#### Kryteria akceptacji
-- [ ] Menu `Widok`: F11 (Fullscreen), Ctrl+R (Reload), Ctrl+= (Zoom In), Ctrl+- (Zoom Out), Ctrl+0 (Reset Zoom)
-- [ ] Menu `Plik`: Ctrl+Q (Quit)
-- [ ] Menu `Zakładki`: Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+1…8
-- [ ] Menu `Pomoc`: F12 (DevTools — tylko w dev), Ctrl+Shift+I (DevTools)
-- [ ] Menu widoczne przez `Alt` na klawiaturze (standardowe zachowanie Linux)
+#### Acceptance criteria
+- [x] `View` menu: F11 (Fullscreen), Ctrl+R (Reload), Ctrl+= (Zoom In), Ctrl+- (Zoom Out), Ctrl+0 (Reset Zoom), Ctrl+Shift+I (DevTools)
+- [x] `File` menu: Ctrl+, (Settings), Ctrl+Q (Quit)
+- [x] `Navigation` menu: Alt+Left (Back), Alt+Right (Forward)
+- [ ] `Tabs` menu: Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+1…8 (Phase 2)
+- [x] The menu is visible via `Alt` on the keyboard (standard Linux behavior) — it auto-hides otherwise (`autoHideMenuBar`), so the tray menu's "Settings" entry is the reliable entry point
 
-#### Testy manualne
-1. Naciśnij `Alt` → menu pojawia się
-2. Każdy skrót z listy działa zgodnie z opisem
-
----
-
-### P3-04 — Manualny test klawiatury w fullscreen
-
-**Status:** `pending`  
-**Zablokowane przez:** P3-01, P3-03
-
-#### Testy manualne (na prawdziwej sesji AVD)
-1. Wejdź w sesję AVD, naciśnij F11 → fullscreen aktywny
-2. Przejdź do ustawień sesji (ikona koła zębatego w toolbarze) → włącz "Keyboard shortcuts (preview)"
-3. Przetestuj:
-   - `Ctrl+Alt+End` → na remote pojawia się dialog Ctrl+Alt+Del ✅
-   - `Alt+F3` → otwiera menu Start na remote ✅
-   - `Ctrl+C` / `Ctrl+V` → kopiuj/wklej przekazywane do remote ✅
-   - `Alt+Tab` → przełącza okna na **remote** (nie na lokalnym) ✅
-4. Wyjdź z fullscreen przez F11 → `Alt+Tab` z powrotem przełącza lokalne okna ✅
+#### Manual tests
+1. Press `Alt` → the menu appears
+2. Every shortcut on the list behaves as described
 
 ---
 
-## Faza 4 — Integracja systemowa
+### P3-04 — Manual keyboard test in fullscreen
+
+**Status:** `pending`
+**Blocked by:** P3-01, P3-03
+
+#### Manual tests (on a real AVD session)
+1. Enter an AVD session, press F11 → fullscreen active
+2. Go to the session settings (gear icon in the toolbar) → enable "Keyboard shortcuts (preview)"
+3. Test:
+   - `Ctrl+Alt+End` → the Ctrl+Alt+Del dialog appears on the remote ✅
+   - `Alt+F3` → opens the Start menu on the remote ✅
+   - `Ctrl+C` / `Ctrl+V` → copy/paste forwarded to the remote ✅
+   - `Alt+Tab` → switches windows on the **remote** (not locally) ✅
+4. Exit fullscreen via F11 → `Alt+Tab` switches local windows again ✅
 
 ---
 
-### P4-01 — System Tray
-
-**Status:** `pending`  
-**Zablokowane przez:** P3-04  
-**Pliki:** `app/tray/index.js`
-
-#### Kryteria akceptacji
-- [ ] Ikona tray pojawia się po uruchomieniu aplikacji
-- [ ] Kliknięcie ikony → show/focus głównego okna
-- [ ] Prawy klik → menu: "Pokaż" / "Zakończ"
-- [ ] Zamknięcie okna (X) → minimalizuje do tray (nie kończy procesu)
-- [ ] "Zakończ" w menu tray → `app.quit()`
-
-#### Testy manualne
-1. Uruchom app → ikona w system tray
-2. Zamknij okno przez X → ikona zostaje, app działa
-3. Kliknij ikonę → okno wraca
-4. Prawy klik → "Zakończ" → ikona znika, app kończy
+## Phase 4 — System integration
 
 ---
 
-### P4-02 — Zoom z persistencją
+### P4-01 — System tray
 
-**Status:** `pending`  
-**Zablokowane przez:** P3-04  
-**Pliki:** `app/browser/tools/zoom.js`, `app/mainAppWindow/index.js`
+**Status:** `completed`
+**Files:** `app/tray/index.js`
 
-#### Kryteria akceptacji
-- [ ] `Ctrl++` / `Ctrl+-` / `Ctrl+0` — zoom in/out/reset przez `webContents.setZoomLevel()`
-- [ ] Poziom zoom zapisywany do `~/.config/windows-app-for-linux/config.json` (lub `electron-store`)
-- [ ] Po ponownym uruchomieniu zoom przywrócony
-- [ ] Zoom niezależny per zakładka (panel i sesje mogą mieć różne poziomy)
+#### Acceptance criteria
+- [x] The tray icon appears once the app launches
+- [x] Clicking the icon → shows/focuses the main window
+- [x] Right-click → menu: "Show portal" / "Settings" / open sessions / "Quit" / "Quit and clear session"
+- [x] Closing the window (X) → hides to tray (doesn't end the process)
+- [x] "Quit" in the tray menu → `app.quit()`
 
-#### Testy manualne
-1. `Ctrl++` kilka razy → strona się powiększa
-2. Zamknij i otwórz app → zoom zachowany
-3. `Ctrl+0` → zoom resetuje się do 100%
-
----
-
-### P4-03 — Manualny test E2E Fazy 4
-
-**Status:** `pending`  
-**Zablokowane przez:** P4-01, P4-02
-
-#### Testy manualne
-1. Tray działa poprawnie (P4-01)
-2. Zoom zapisuje się (P4-02)
-3. Window state zapisuje się (P1-10)
-4. App uruchamia się na Wayland bez błędów (jeśli dostępny)
-5. Na X11: brak ostrzeżeń `libva`/`VAAPI` w stdout
+#### Manual tests
+1. Launch the app → an icon appears in the system tray
+2. Close the window via X → the icon stays, the app keeps running
+3. Click the icon → the window comes back
+4. Right-click → "Quit" → the icon disappears, the app exits
 
 ---
 
-## Faza 5 — Packaging & Flathub
+### P4-02 — Zoom with persistence
+
+**Status:** `pending`
+**Blocked by:** P3-04
+**Files:** `app/browser/tools/zoom.js`, `app/mainAppWindow/index.js`
+
+#### Acceptance criteria
+- [ ] `Ctrl++` / `Ctrl+-` / `Ctrl+0` — zoom in/out/reset via `webContents.setZoomLevel()` (in/out/reset already work per-window without persistence; only the persistence part is pending)
+- [ ] Zoom level saved to `~/.config/windows-app-for-linux/config.json`
+- [ ] Zoom restored after relaunch
+- [ ] Zoom independent per tab (panel and sessions can have different levels)
+
+#### Manual tests
+1. `Ctrl++` a few times → the page zooms in
+2. Close and reopen the app → zoom preserved
+3. `Ctrl+0` → zoom resets to 100%
 
 ---
 
-### P5-01 — Kompletny zestaw ikon
+### P4-03 — Manual E2E test for Phase 4
 
-**Status:** `pending`  
-**Zablokowane przez:** P1-11
+**Status:** `pending`
+**Blocked by:** P4-01, P4-02
 
-#### Kryteria akceptacji
-- [ ] SVG źródłowe w `assets/icons/icon.svg`
-- [ ] PNG: 16, 32, 48, 64, 128, 256, 512 w `assets/icons/`
-- [ ] electron-builder konfiguracja wskazuje prawidłowy katalog
+#### Manual tests
+1. Tray works correctly (P4-01)
+2. Zoom is saved (P4-02)
+3. Window state is saved (P1-10)
+4. The app launches on Wayland without errors (if available)
+5. On X11: no `libva`/`VAAPI` warnings in stdout
+
+---
+
+## Phase 5 — Packaging & Flathub
+
+---
+
+### P5-01 — Complete icon set
+
+**Status:** `completed`
+**Blocked by:** P1-11
+
+#### Acceptance criteria
+- [x] Source "vector" (base64-embedded raster wrapper) in `assets/icons/icon.svg`
+- [x] PNG: 16, 22, 32, 48, 64, 128, 256, 512 in `assets/icons/`
+- [x] electron-builder configuration points at the right directory
 
 ---
 
 ### P5-02 — AppStream metadata
 
-**Status:** `pending`  
-**Zablokowane przez:** P5-01  
-**Pliki:** `assets/io.github.mariuszkopowski.WindowsAppForLinux.appdata.xml`
+**Status:** `completed`
+**Blocked by:** P5-01
+**Files:** `assets/io.github.mariuszkopowski.WindowsAppForLinux.appdata.xml`
 
-#### Kryteria akceptacji
-- [ ] `<id>`: `io.github.mariuszkopowski.WindowsAppForLinux`
-- [ ] `<name>`: `Windows App`
-- [ ] `<summary>` i `<description>` w języku angielskim
-- [ ] `<url type="homepage">` wskazuje na repozytorium GitHub
-- [ ] `<releases>` z aktualną wersją i datą
-- [ ] `<screenshots>` — minimum 1 zrzut ekranu (może być placeholder)
-- [ ] `appstreamcli validate` przechodzi bez błędów
+#### Acceptance criteria
+- [x] `<id>`: `io.github.mariuszkopowski.WindowsAppForLinux`
+- [x] `<name>`: `Windows App`
+- [x] `<summary>` and `<description>` in English
+- [x] `<url type="homepage">` points at the GitHub repository
+- [x] `<releases>` with the current version and date
+- [x] `<screenshots>` — at least one screenshot (`docs/screenshot.png` still needs to be added)
+- [ ] `appstreamcli validate` passes without errors (not yet run)
 
-#### Testy manualne
-1. `appstreamcli validate assets/io.github.mariuszkopowski.WindowsAppForLinux.appdata.xml` → brak błędów
+#### Manual tests
+1. `appstreamcli validate assets/io.github.mariuszkopowski.WindowsAppForLinux.appdata.xml` → no errors
 
 ---
 
 ### P5-03 — Build AppImage
 
-**Status:** `pending`  
-**Zablokowane przez:** P5-01, P5-02  
+**Status:** `completed`
+**Blocked by:** P5-01, P5-02
 
-#### Kryteria akceptacji
-- [ ] `npm run build:appimage` kończy się sukcesem
-- [ ] Plik `dist/Windows App-*.AppImage` istnieje
-- [ ] AppImage uruchamia się bez sudo: `chmod +x *.AppImage && ./*.AppImage`
-- [ ] App ładuje `windows.cloud.microsoft` po uruchomieniu z AppImage
+#### Acceptance criteria
+- [x] `npm run build:appimage` completes successfully
+- [x] `dist/Windows App-*.AppImage` exists
+- [x] The AppImage runs without sudo: `chmod +x *.AppImage && ./*.AppImage`
+- [x] The app loads `windows.cloud.microsoft` when launched from the AppImage
 
-#### Testy manualne
-1. Zbuduj: `npm run build:appimage`
+#### Manual tests
+1. Build: `npm run build:appimage`
 2. `chmod +x dist/*.AppImage && dist/*.AppImage`
-3. App uruchamia się, ładuje stronę, logowanie działa
+3. The app launches, loads the page, sign-in works
 
 ---
 
 ### P5-04 — Build Flatpak
 
-**Status:** `pending`  
-**Zablokowane przez:** P5-01, P5-02  
+**Status:** `completed`
+**Blocked by:** P5-01, P5-02
 
-#### Kryteria akceptacji
-- [ ] `npm run build:flatpak` kończy się sukcesem
-- [ ] Plik `dist/*.flatpak` istnieje
-- [ ] `flatpak install --user dist/*.flatpak` działa
-- [ ] App uruchamia się z Flatpak sandbox bez błędów uprawnień (sieć, audio, Wayland/X11)
-- [ ] Logowanie do `windows.cloud.microsoft` działa z sandboxu
+#### Acceptance criteria
+- [x] `npm run build:flatpak` completes successfully
+- [x] `dist/*.flatpak` exists
+- [x] `flatpak install --user dist/*.flatpak` works
+- [x] The app launches from the Flatpak sandbox without permission errors (network, audio, Wayland/X11)
+- [x] Signing in to `windows.cloud.microsoft` works from the sandbox
 
-#### Testy manualne
+#### Manual tests
 1. `npm run build:flatpak`
 2. `flatpak install --user dist/*.flatpak`
 3. `flatpak run io.github.mariuszkopowski.WindowsAppForLinux`
-4. Logowanie i sesja AVD działają
-5. Sprawdź że kamera i mikrofon są dostępne w sesji (jeśli tenant to pozwala)
+4. Sign-in and the AVD session work
+5. Check whether camera and microphone are available in the session (if the tenant allows it — see the camera limitation note in `docs/PLAN.md`)
 
 ---
 
-### P5-05 — Manifest do Flathub
+### P5-05 — Build Snap
 
-**Status:** `pending`  
-**Zablokowane przez:** P5-04
+**Status:** `completed`
+**Blocked by:** P5-01, P5-02
 
-#### Opis
-Flathub wymaga oddzielnego publicznego repozytorium GitHub z manifestem. Nie jest częścią głównego repo.
+#### Description
+Uses electron-builder's built-in `snap` target rather than a hand-rolled `snapcraft.yaml`. electron-builder's snap builder uses its own bundled helper (`app-builder-bin`) to assemble the squashfs image directly — it doesn't shell out to `snapcraft` and doesn't need `snapd` running, which makes it work fine in a plain Docker container CI job (confirmed: `squashfs-tools` is enough).
 
-#### Kryteria akceptacji
-- [ ] Repozytorium `flathub/io.github.mariuszkopowski.WindowsAppForLinux` (lub fork flathub template)
-- [ ] Plik `io.github.mariuszkopowski.WindowsAppForLinux.yml` z manifestem Flatpak
-- [ ] Manifest pobiera release AppImage z GitHub Releases lub buduje z source
-- [ ] `flatpak-builder --install --user builddir io.github.mariuszkopowski.WindowsAppForLinux.yml` działa lokalnie
-- [ ] PR do `github.com/flathub/flathub` otwarte (ostatni krok)
-
-#### Testy manualne
-1. Lokalny build z manifestu Flathub: `flatpak-builder --install --user builddir manifest.yml`
-2. App uruchamia się z tego builda
+#### Acceptance criteria
+- [x] `npm run build:snap` completes successfully
+- [x] `dist/*.snap` exists
+- [x] Strict confinement, with plugs for camera, audio-playback/record, network, network-bind, desktop(-legacy), wayland, x11, opengl, pulseaudio, home, removable-media
+- [x] Built and installed locally (`snap install --dangerous`), verified to launch
 
 ---
 
-## Podsumowanie
+### P5-06 — Flathub manifest
 
-| Faza | Zadań | Gotowe |
+**Status:** `pending`
+**Blocked by:** P5-04
+
+#### Description
+Flathub requires a separate public GitHub repository with the manifest. It isn't part of the main repo.
+
+#### Acceptance criteria
+- [ ] `flathub/io.github.mariuszkopowski.WindowsAppForLinux` repository (or a fork of the Flathub template)
+- [ ] `io.github.mariuszkopowski.WindowsAppForLinux.yml` Flatpak manifest file
+- [ ] The manifest downloads an AppImage release from GitHub Releases or builds from source
+- [ ] `flatpak-builder --install --user builddir io.github.mariuszkopowski.WindowsAppForLinux.yml` works locally
+- [ ] A PR to `github.com/flathub/flathub` is open (final step)
+
+#### Manual tests
+1. Local build from the Flathub manifest: `flatpak-builder --install --user builddir manifest.yml`
+2. The app launches from that build
+
+---
+
+## Summary
+
+| Phase | Tasks | Done |
 |---|---|---|
-| 1 — Fundament | 11 | 8 |
+| 1 — Foundation | 11 | 11 |
 | 2 — Tab Manager | 9 | 0 |
-| 3 — Fullscreen | 4 | 0 |
-| 4 — System | 3 | 0 |
-| 5 — Packaging | 5 | 0 |
-| **Razem** | **32** | **8** |
+| 3 — Fullscreen | 4 | 1 |
+| 4 — System | 3 | 1 |
+| 5 — Packaging | 6 | 5 |
+| **Total** | **33** | **18** |

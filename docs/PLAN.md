@@ -1,195 +1,198 @@
-# Plan implementacji — windows-app-for-linux
+# Implementation plan — windows-app-for-linux
 
-## Cel projektu
+## Project goal
 
-Natywna aplikacja Linux opakowująca `https://windows.cloud.microsoft` (Windows App / Azure Virtual Desktop). Pozwala pracować z chmurą Windows tak jak z lokalną aplikacją: wielozakładkowy interfejs, obsługa klawiatury w fullscreenie, integracja z systemem.
+A native Linux application wrapping `https://windows.cloud.microsoft` (Windows App / Azure Virtual Desktop). Lets you work with the Windows cloud like a local app: multi-tab interface, keyboard handling in fullscreen, system integration.
 
-Dystrybucja: **AppImage** (standalone) i **Flatpak** (Flathub: `io.github.mariuszkopowski.WindowsAppForLinux`).
-
----
-
-## Decyzje technologiczne
-
-### Electron, nie PWA
-
-PWA nie daje dostępu do:
-- `app.commandLine.appendSwitch` — bez tego nie można włączyć VAAPI ani SharedArrayBuffer
-- `session.setUserAgent()` na poziomie sesji (a nie pojedynczego okna)
-- `setWindowOpenHandler` do pełnej kontroli nad oknami
-- natywnej integracji (tray, global shortcuts, protokół URL)
-
-### Baza kodu
-
-Architektura wzorowana na [teams-for-linux](https://github.com/IsmaelMartinez/teams-for-linux) i [outlook-for-linux](https://github.com/mahmoudbahaa/outlook-for-linux) — ten sam wzorzec `BrowserWindow` + preload + `setWindowOpenHandler` + `webRequest` interceptors.
-
-Kluczowe różnice wobec tych projektów:
-- Wielozakładkowy interfejs (`WebContentsView` per sesja AVD) zamiast jednego okna
-- Fullscreen per zakładka (nie per okno)
-- Własny pasek zakładek (HTML overlay) zamiast natywnego menu
+Distribution: **AppImage** (standalone), **Flatpak** (Flathub: `io.github.mariuszkopowski.WindowsAppForLinux`), and **Snap**.
 
 ---
 
-## Architektura
+## Technology decisions
 
-### Struktura procesów
+### Electron, not a PWA
+
+A PWA doesn't give access to:
+- `app.commandLine.appendSwitch` — without it, VAAPI and SharedArrayBuffer can't be enabled
+- `session.setUserAgent()` at the session level (rather than a single window)
+- `setWindowOpenHandler` for full control over new windows
+- native integration (tray, global shortcuts, URL protocol)
+
+### Codebase
+
+Architecture modeled on [teams-for-linux](https://github.com/IsmaelMartinez/teams-for-linux) and [outlook-for-linux](https://github.com/mahmoudbahaa/outlook-for-linux) — the same `BrowserWindow` + preload + `setWindowOpenHandler` + `webRequest` interceptor pattern.
+
+Key differences from those projects:
+- Multi-tab interface (`WebContentsView` per AVD session) instead of a single window
+- Fullscreen per tab (not per window)
+- Custom tab bar (HTML overlay) instead of a native menu
+
+---
+
+## Architecture
+
+### Process structure
 
 ```
 Electron Main Process
-├── app/index.js                  — flagi Chromium, single-instance lock, lifecycle
-├── app/config/                   — konfiguracja (defaults + plik JSON + CLI)
+├── app/index.js                  — Chromium flags, single-instance lock, lifecycle
+├── app/config/                   — configuration (defaults + JSON file + CLI)
 ├── app/mainAppWindow/
 │   ├── index.js                  — BrowserWindow, session, windowOpenHandler
-│   └── tabManager.js             — WebContentsView per sesja AVD [Faza 2]
-└── app/menus/appMenu.js          — menu aplikacji, skróty [Faza 3]
+│   └── tabManager.js             — WebContentsView per AVD session [Phase 2]
+└── app/menus/appMenu.js          — application menu, shortcuts [Phase 3]
 
 Renderer / Preload (per WebContentsView)
 └── app/browser/preload.js        — navigator.platform + userAgentData spoof
 
-Tab Bar (własny renderer)
-└── app/tabBar/                   — HTML/CSS/JS overlay nad oknami [Faza 2]
+Tab Bar (own renderer)
+└── app/tabBar/                   — HTML/CSS/JS overlay above windows [Phase 2]
 ```
 
-### Model zakładek (Faza 2+)
+### Tab model (Phase 2+)
 
 ```
 BrowserWindow
-├── [Tab Bar WebContentsView] ← zawsze na wierzchu, 40px wysokości
+├── [Tab Bar WebContentsView] ← always on top, 40px tall
 ├── [WebContentsView #0]      ← https://windows.cloud.microsoft/#/devices (panel)
-├── [WebContentsView #1]      ← /webclient/avd/[guid1] (sesja 1)
-└── [WebContentsView #2]      ← /webclient/avd/[guid2] (sesja 2, opcjonalnie)
+├── [WebContentsView #1]      ← /webclient/avd/[guid1] (session 1)
+└── [WebContentsView #2]      ← /webclient/avd/[guid2] (session 2, optional)
 ```
 
-Wszystkie WebContentsViews dzielą **jedną sesję** (`persist:windows-app`). Jest to konieczne — tokeny Entra ID muszą być widoczne we wszystkich zakładkach.
+All WebContentsViews share **one session** (`persist:windows-app`). This is required — Entra ID tokens must be visible across every tab.
 
-### Fullscreen (Faza 3)
+### Fullscreen (Phase 3)
 
-W trybie fullscreen aktywnej zakładki:
-1. Tab Bar jest ukrywany
-2. Aktywny WebContentsView zajmuje 100% okna
-3. Web app samodzielnie przejmuje klawiaturę po wejściu w fullscreen
-4. ESC lub F11 przywraca Tab Bar i poprzednie rozmiary
+In fullscreen mode for the active tab:
+1. The Tab Bar is hidden
+2. The active WebContentsView occupies 100% of the window
+3. The web app itself takes over the keyboard once fullscreen is entered
+4. ESC or F11 restores the Tab Bar and previous sizes
 
 ---
 
-## Krytyczne wymagania techniczne
+## Critical technical requirements
 
-### UA spoof — dwa poziomy
+### UA spoof — two levels
 
-**Poziom 1 (HTTP headers):** `session.setUserAgent()` + `loadURL({ userAgent })` — każde żądanie HTTP wysyła Edge/Windows UA.
+**Level 1 (HTTP headers):** `session.setUserAgent()` + `loadURL({ userAgent })` — every HTTP request sends the Edge/Windows UA.
 
-**Poziom 2 (JavaScript):** `preload.js` patchuje:
+**Level 2 (JavaScript):** `preload.js` patches:
 - `Navigator.prototype.platform` → `"Win32"`
 - `navigator.userAgentData.platform` → `"Windows"`
-- `navigator.userAgentData.brands` → Edge 143 brands
-- `navigator.userAgentData.getHighEntropyValues()` → zwraca Windows architekturę i wersję
+- `navigator.userAgentData.brands` → Edge brands (version derived from the configured UA string)
+- `navigator.userAgentData.getHighEntropyValues()` → returns Windows architecture and version
 
-Poziom 2 jest konieczny bo Entra ID i Conditional Access używają Client Hints API zamiast (lub oprócz) legacy UA string.
+Level 2 is required because Entra ID and Conditional Access use the Client Hints API instead of (or alongside) the legacy UA string.
 
 ### Chromium flags
 
-Ustawiane przed `app.ready` w `app/index.js`:
+Set before `app.ready` in `app/index.js`:
 
-| Flaga | Powód |
+| Flag | Reason |
 |---|---|
-| `VaapiVideoDecoder` | Hardware H.264 decode dla RDP graphics stream (bez tego — CPU) |
-| `SharedArrayBuffer` | Wymagany przez RDP WebAssembly codec |
-| `CrossOriginOpenerPolicy` | Wymagany przez stronę dla SharedArrayBuffer |
-| `WebRTCPipeWireCapturer` | Udostępnianie ekranu na Wayland (conditional) |
-| `UseOzonePlatform` | Natywny Wayland (conditional na `WAYLAND_DISPLAY`) |
+| `VaapiVideoDecoder` | Hardware H.264 decode for the RDP graphics stream (without it — CPU) |
+| `SharedArrayBuffer` | Required by the RDP WebAssembly codec |
+| `CrossOriginOpenerPolicy` | Required by the page for SharedArrayBuffer |
+| `WebRTCPipeWireCapturer` | Screen sharing on Wayland (conditional) |
+| `UseOzonePlatform` | Native Wayland (conditional on `WAYLAND_DISPLAY`) |
 
 ### Session security
 
-- `webSecurity: true` — **nie wolno zmieniać** — strona wymaga COOP/COEP dla SharedArrayBuffer
-- `contextIsolation: false` — wymagane żeby preload mógł patchować `navigator` strony
-- `sandbox: false` — wymagane żeby preload miał dostęp do Node.js APIs
-- `nodeIntegration: false` — strona sama nie ma dostępu do Node.js
+- `webSecurity: true` — **must not be changed** — the page requires COOP/COEP for SharedArrayBuffer
+- `contextIsolation: false` — required so the preload can patch the page's `navigator`
+- `sandbox: false` — required so the preload has access to Node.js APIs
+- `nodeIntegration: false` — the page itself has no access to Node.js
 
 ---
 
-## Fazy implementacji
+## Implementation phases
 
-### Faza 1 — Fundament ✅ (częściowo)
+### Phase 1 — Foundation ✅ (partially)
 
-Działająca aplikacja Electron ładująca Windows App, z UA spoof i obsługą auth.
+Working Electron app loading Windows App, with UA spoof and auth support.
 
-**Zrobione:**
-- package.json (AppImage + Flatpak targets)
-- Chromium flags z Wayland detection
-- Config system (options.js + index.js z yargs)
-- BrowserWindow z persist session
-- UA spoof — HTTP i JS (preload)
+**Done:**
+- package.json (AppImage + Flatpak + Snap targets)
+- Chromium flags with Wayland detection
+- Config system (options.js + index.js with yargs)
+- BrowserWindow with persistent session
+- UA spoof — HTTP and JS (preload)
 - windowOpenHandler — auth, AVD, external
 - CSP header stripping (SSO)
 - about:blank SSO intercept
 - Render process crash recovery
+- Settings window (cloud environment, window size, User-Agent, clear session)
+- App icons (assets/)
+- Test infrastructure (Jest)
 
-**Pozostało:**
-- Window state persistence (rozmiar/pozycja)
-- Ikony aplikacji (assets/)
-- Test infrastruktura (Jest)
+**Remaining:**
+- Window state persistence (size/position) — done
+- Full CI (GitHub Actions + Gitea Actions) — done
 
-### Faza 2 — Tab Manager
+### Phase 2 — Tab Manager
 
-Każda sesja AVD otwiera się jako zakładka. Własny Tab Bar jako HTML overlay.
+Each AVD session opens as a tab. Custom Tab Bar as an HTML overlay.
 
-Kluczowe elementy:
-- `TabManager` — tworzy/niszczy/przełącza WebContentsViews
-- `TabBar` — HTML/CSS, IPC z main process
-- windowOpenHandler routuje `/webclient/avd/` do TabManager
-- Ctrl+T (nowy tab do panelu), Ctrl+W (zamknij tab), Ctrl+Tab (następny tab)
-- Tytuły zakładek z `webContents.getTitle()`
+Key elements:
+- `TabManager` — creates/destroys/switches WebContentsViews
+- `TabBar` — HTML/CSS, IPC with the main process
+- windowOpenHandler routes `/webclient/avd/` to TabManager
+- Ctrl+T (new tab to the panel), Ctrl+W (close tab), Ctrl+Tab (next tab)
+- Tab titles from `webContents.getTitle()`
 
-### Faza 3 — Fullscreen & Klawiatura
+### Phase 3 — Fullscreen & Keyboard
 
-Fullscreen per zakładka z ukryciem Tab Bar.
+Fullscreen per tab with the Tab Bar hidden.
 
-- F11 → fullscreen aktywnej zakładki → Tab Bar znika → WebContentsView = 100% okna
-- ESC / F11 ponownie → wyjście z fullscreen → Tab Bar wraca
-- Overlay informacyjny przy pierwszym wejściu (jakie skróty działają: Ctrl+Alt+End, Alt+F3 itd.)
-- Kompletne menu aplikacji ze skrótami
+- F11 → fullscreen the active tab → Tab Bar disappears → WebContentsView = 100% of window
+- ESC / F11 again → exit fullscreen → Tab Bar comes back
+- Info overlay on first entry (which shortcuts work: Ctrl+Alt+End, Alt+F3, etc.)
+- Complete application menu with shortcuts
 
-### Faza 4 — Integracja systemowa
+### Phase 4 — System integration
 
-- System tray (ikona + Show/Quit)
-- Window state persistence (zapisywanie rozmiaru/pozycji)
-- Zoom (Ctrl+/-/0) z persistencją per partition
-- Nawigacja Alt+←/→
-- Detekcja braku połączenia + retry
+- System tray (icon + Show/Quit) — done
+- Window state persistence (saving size/position) — done
+- Zoom (Ctrl+/-/0) with per-partition persistence
+- Alt+←/→ navigation — done
+- Connection-loss detection + retry
 
-### Faza 5 — Packaging & Flathub
+### Phase 5 — Packaging & Flathub
 
-- Kompletny zestaw ikon (16–512px, PNG + SVG source)
-- AppStream metadata (appdata.xml)
-- .desktop file
-- Działający build AppImage
-- Działający build Flatpak
-- Manifest do oddzielnego repo na Flathub
+- Complete icon set (16–512px, PNG + SVG source) — done
+- AppStream metadata (appdata.xml) — done
+- .desktop file (generated by electron-builder)
+- Working AppImage build — done
+- Working Flatpak build — done
+- Working Snap build — done
+- Manifest for a separate Flathub repo
 
 ---
 
-## Znane ograniczenia (web client vs. natywny klient)
+## Known limitations (web client vs. native client)
 
-| Feature | Web client | Natywny Windows App |
+| Feature | Web client | Native Windows App |
 |---|---|---|
-| Wiele monitorów | ❌ | ✅ |
+| Multiple monitors | ❌ | ✅ |
 | RDP Shortpath (UDP) | ❌ | ✅ |
 | Teams WebRTC optimization | ❌ | ✅ |
 | Screen capture protection | ❌ | ✅ |
-| Intune MAM (pełne) | ⚠️ Edge only | ✅ |
-| Przekierowanie kamery (webcam redirection) | ⚠️ Niestabilne | ✅ |
+| Intune MAM (full) | ⚠️ Edge only | ✅ |
+| Camera redirection (webcam redirection) | ⚠️ Unreliable | ✅ |
 
-Ograniczenia web clienta — nie możemy ich naprawić w Elektronie.
+Web client limitations — we can't fix these from Electron.
 
-**Kamera:** aplikacja przyznaje uprawnienie `camera` automatycznie (`permissionAllowed()` w `app/mainAppWindow/helpers.js`), ale samo podłączenie kamery w sesji AVD zależy od web clienta Windows App, który **nie ma jeszcze pełnego wsparcia dla przekierowania kamery** — bywa, że urządzenie nie pojawia się w sesji zdalnej mimo przyznanych uprawnień, nawet gdy w natywnym kliencie Windows App (nie-web) działa bez problemu. To ograniczenie po stronie Microsoftu, nie da się go naprawić w tym wrapperze.
+**Camera:** the app grants the `camera` permission automatically (`permissionAllowed()` in `app/mainAppWindow/helpers.js`), but whether the camera actually connects inside an AVD session depends on the Windows App web client, which **doesn't yet have full support for camera redirection** — the device sometimes doesn't show up in the remote session despite the granted permission, even when it works fine in the native (non-web) Windows App client. This is a limitation on Microsoft's side; it can't be fixed in this wrapper.
 
 ---
 
-## Ryzyka
+## Risks
 
-| Ryzyko | Prawdopodobieństwo | Mitygacja |
+| Risk | Likelihood | Mitigation |
 |---|---|---|
-| Tenant wymaga prawdziwego Edge | Średnie | Dokumentacja; alert w UI gdy spoof może nie wystarczyć |
-| COOP/COEP blokuje auth popupy | Średnie | Wspólna sesja w modal child window |
-| Fullscreen na Wayland działa inaczej | Wysokie | Testy na XWayland i native Wayland |
-| Dwie równoległe sesje AVD kolidują | Niskie | Każda sesja ma oddzielny WebSocket do AVD gateway |
-| Aktualizacje Edge zmieniają Client Hints API | Niskie | UA string konfigurowalny w config.json |
+| A tenant requires real Edge | Medium | Documentation; UI alert when the spoof might not be enough |
+| COOP/COEP blocks auth popups | Medium | Shared session in a modal child window |
+| Fullscreen behaves differently on Wayland | High | Test on both XWayland and native Wayland |
+| Two concurrent AVD sessions collide | Low | Each session has its own WebSocket to the AVD gateway |
+| Edge updates change the Client Hints API | Low | UA string configurable in config.json / Settings window |
