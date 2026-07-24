@@ -40,6 +40,7 @@ flatpak run io.github.mariuszkopowski.WindowsAppForLinux
 ```bash
 sudo snap install --dangerous "windows-app-for-linux_*.snap"
 ```
+**WARNING - Builds have been tested on Fedora, not on Ubuntu, so things may not work**
 
 ## Configuration
 
@@ -59,7 +60,7 @@ No in-app URL bar — configuration lives in `~/.config/windows-app-for-linux/co
 | `userAgent` | `--user-agent` | Override the spoofed user-agent string |
 | `window.width` / `window.height` | — | Default window size |
 
-The Settings window covers `cloudEnvironment`, the connection URL (only editable when environment is set to Custom), window size, and a "Clear Cookies and Cache" button. Most changes take effect after restarting the app.
+The Settings window covers `cloudEnvironment`, the connection URL (only editable when the environment is set to Custom), window size, and a "Clear Cookies and Cache" button. Most changes take effect after restarting the app.
 
 ## Keyboard shortcuts
 
