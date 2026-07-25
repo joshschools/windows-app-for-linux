@@ -839,8 +839,8 @@ function createWindow(isFullscreen = false) {
     });
 
     // Handle console messages for debugging
-    newWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-      logger.debug(`[New Window Console ${level}]:`, message, `(${sourceId}:${line})`);
+    newWindow.webContents.on('console-message', ({ level, message, lineNumber, sourceId }) => {
+      logger.debug(`[New Window Console ${level}]:`, message, `(${sourceId}:${lineNumber})`);
     });
 
     // Debug: Log when page starts loading
@@ -1365,5 +1365,4 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-
 

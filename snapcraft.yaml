@@ -145,6 +145,9 @@ parts:
           sudo apt-get install -y nodejs
         fi
         npm install --no-audit --no-fund
+        # Electron 42+ downloads its binary on first use rather than during
+        # postinstall. The launcher needs dist/electron available in the snap.
+        ./node_modules/.bin/install-electron --no
         # Remove cross-architecture binaries to avoid GLIBC linting errors
         rm -rf node_modules/7zip-bin/linux/arm node_modules/7zip-bin/linux/arm64 node_modules/7zip-bin/linux/ia32 2>/dev/null || true
       fi

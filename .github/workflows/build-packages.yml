@@ -126,6 +126,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Electron 42+ downloads its binary on first use instead of during
+      # postinstall. Flatpak copies node_modules into an offline sandbox, so
+      # materialize the binary before flatpak-builder starts.
+      - name: Download Electron binary
+        run: ./node_modules/.bin/install-electron --no
+
       - name: Build Flatpak package
         run: |
           mkdir -p build/flatpak-build
@@ -325,4 +331,3 @@ jobs:
           else
             echo "❌ AppImage package build failed" >> $GITHUB_STEP_SUMMARY
           fi
-
