@@ -1,5 +1,6 @@
 {
   "name": "windows-app-for-linux",
+  "desktopName": "io.github.mariuszkopowski.WindowsAppForLinux.desktop",
   "version": "0.1.0",
   "description": "Windows App (windows.cloud.microsoft) wrapper for Linux",
   "main": "app/index.js",
@@ -21,8 +22,8 @@
   "author": "mariuszkopowski",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^34.0.0",
-    "electron-builder": "^25.0.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "jest": "^30.4.2"
   },
   "dependencies": {
@@ -36,6 +37,7 @@
       "assets/**/*"
     ],
     "linux": {
+      "syncDesktopName": true,
       "target": [
         "AppImage",
         "flatpak",
@@ -89,6 +91,6 @@
     }
   },
   "allowScripts": {
-    "electron@34.5.8": true
+    "electron@43.2.0": true
   }
 }
