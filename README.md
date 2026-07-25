@@ -13,6 +13,7 @@ This **unofficial client** wraps the Windows Cloud Devices web interface in an E
 - ✅ **Browser Emulation**: Custom User-Agent (Edge 143.0.0.0) and browser-like headers
 - ✅ **Remote Desktop Support**: Handles new windows for RDP sessions with proper session management
 - ✅ **Device Access**: Camera, microphone, and other media device permissions
+- ✅ **Device Check**: Local camera preview, microphone level meter, device selection, and package diagnostics
 - ✅ **Fullscreen Mode**: Toggle fullscreen with F11
 - ✅ **Multi-Window Support**: Properly handles popup windows for remote desktop connections
 - ✅ **Session Management**: Shared cookies and authentication across windows
@@ -73,6 +74,11 @@ The app will:
 - Use the configured Edge User-Agent
 - Automatically grant permissions for camera and microphone when needed
 - Handle new windows for Azure Virtual Desktop sessions
+
+Before connecting, use **File → Camera & Microphone Check** (or
+`Ctrl+Shift+M`) to verify local capture, choose devices, and see actionable
+Snap/Flatpak diagnostics. You can also launch directly into the check with
+`windows-app-for-linux --media-check`.
 
 ## Keyboard Shortcuts
 
@@ -266,8 +272,14 @@ The app automatically grants the following permissions:
 
 1. **Camera/Microphone not working**: 
    - Check system permissions (Linux desktop settings)
-   - For Snap: `snap connect windows-app-for-linux:camera`
-   - For Flatpak: Check Flatpak permissions with `flatpak info com.microsoft.WindowsAppForLinux`
+   - Run **File → Camera & Microphone Check** and confirm both devices pass
+   - For Snap: check `snap connections windows-app-for-linux`, then connect
+     `camera` and `audio-record` if needed
+   - For Flatpak: check permissions with
+     `flatpak info --show-permissions io.github.joshschools.WindowsAppForLinux`
+   - In the remote-session toolbar, enable Camera and Microphone, then reconnect
+   - Ask the AVD administrator to verify `audiocapturemode:i:1` and
+     `camerastoredirect:s:*`
 
 2. **Audio issues**:
    - Ensure PulseAudio is running
@@ -340,4 +352,3 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 - A Microsoft account is required to use Azure Virtual Desktops
 - Remote desktop sessions (Azure Virtual Desktops) open in separate windows for better isolation
 - The app is designed to work on Linux distributions with X11 or Wayland
-

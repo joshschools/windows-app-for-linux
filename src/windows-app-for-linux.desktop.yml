@@ -27,7 +27,7 @@ modules:
     # cannot run inside the freedesktop SDK sandbox the way the old manifest tried.
     build-commands:
       - mkdir -p /app/windows-app-for-linux /app/bin
-      - cp -r src/main.js src/settings-preload.js src/security.js src/config.js src/shortcuts.js src/recovery.js package.json node_modules /app/windows-app-for-linux/
+      - cp -r src/main.js src/settings-preload.js src/security.js src/config.js src/shortcuts.js src/recovery.js src/permissions.js src/media-check.html package.json node_modules /app/windows-app-for-linux/
       - |
         cat > /app/bin/windows-app-for-linux << 'EOF'
         #!/bin/sh

@@ -4,7 +4,7 @@ const os = require('os');
 const fs = require('fs');
 
 // Pure, unit-tested helpers (see src/*.js and test/*.test.js)
-const { isTrustedOrigin, isAllowedNavigationUrl } = require('./security');
+const { isAllowedNavigationUrl } = require('./security');
 const {
   DEFAULT_USER_AGENT,
   DEFAULT_CONNECTION_URL,
@@ -15,6 +15,9 @@ const {
 } = require('./config');
 const { isForceCloseShortcut, isFullscreenToggle, isDevToolsToggle } = require('./shortcuts');
 const { shouldRetryCrash } = require('./recovery');
+const { shouldGrantPermission } = require('./permissions');
+
+const START_IN_MEDIA_CHECK = process.argv.includes('--media-check');
 
 // Set userData path to a persistent location
 // In snaps, use SNAP_USER_DATA if available, otherwise use standard XDG config directory
@@ -132,6 +135,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 let mainWindow;
+let mediaCheckWindow;
 const windows = new Set(); // Track all windows for menu updates
 
 // About dialog
@@ -465,6 +469,53 @@ function showSettingsDialog() {
   });
 }
 
+function isMediaCheckWebContents(webContents) {
+  return Boolean(
+    mediaCheckWindow &&
+    !mediaCheckWindow.isDestroyed() &&
+    webContents === mediaCheckWindow.webContents
+  );
+}
+
+function showMediaCheckDialog() {
+  if (mediaCheckWindow && !mediaCheckWindow.isDestroyed()) {
+    mediaCheckWindow.focus();
+    return;
+  }
+
+  mediaCheckWindow = new BrowserWindow({
+    width: 920,
+    height: 760,
+    minWidth: 700,
+    minHeight: 620,
+    title: 'Camera & Microphone Check',
+    parent: mainWindow,
+    backgroundColor: '#10141c',
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true
+    }
+  });
+
+  mediaCheckWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mediaCheckWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mediaCheckWindow.once('ready-to-show', () => {
+    if (mediaCheckWindow && !mediaCheckWindow.isDestroyed()) {
+      mediaCheckWindow.show();
+    }
+  });
+  mediaCheckWindow.on('closed', () => {
+    mediaCheckWindow = null;
+  });
+
+  mediaCheckWindow.loadFile(path.join(__dirname, 'media-check.html')).catch(err => {
+    logger.error('Failed to load camera and microphone check:', err);
+  });
+}
+
 // Function to create application menu with DevTools toggle
 function createMenu() {
   const isMac = process.platform === 'darwin';
@@ -501,6 +552,13 @@ function createMenu() {
           accelerator: 'CmdOrCtrl+,',
           click: () => {
             showSettingsDialog();
+          }
+        },
+        {
+          label: 'Camera & Microphone Check',
+          accelerator: 'CmdOrCtrl+Shift+M',
+          click: () => {
+            showMediaCheckDialog();
           }
         },
         { type: 'separator' },
@@ -712,9 +770,7 @@ function createWindow(isFullscreen = false) {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: true,
-      // Enable permissions for camera, microphone, etc.
-      permissions: ['camera', 'microphone', 'notifications']
+      webSecurity: true
     },
     show: false // Don't show until ready
   });
@@ -758,7 +814,6 @@ function createWindow(isFullscreen = false) {
         nodeIntegration: false,
         contextIsolation: true,
         webSecurity: true,
-        permissions: ['camera', 'microphone', 'notifications'],
         // Use the same session as the main window - this shares cookies/auth!
         session: session.defaultSession,
         // DevTools disabled by default - can be toggled via menu (Ctrl+Shift+I)
@@ -1058,20 +1113,8 @@ function createWindow(isFullscreen = false) {
             window.SharedArrayBuffer = originalSAB;
           }
           
-          // Ensure permissions API returns granted for camera/microphone
-          if (navigator.permissions && navigator.permissions.query) {
-            const originalQuery = navigator.permissions.query.bind(navigator.permissions);
-            navigator.permissions.query = function(descriptor) {
-              console.debug('[Permissions API] Query:', descriptor.name);
-              if (descriptor.name === 'camera' || descriptor.name === 'microphone' || descriptor.name === 'media') {
-                console.debug('[Permissions API] Returning granted for:', descriptor.name);
-                return Promise.resolve({ state: 'granted', onchange: null });
-              }
-              return originalQuery(descriptor);
-            };
-          }
-
-          // Also ensure getUserMedia works by pre-granting permissions
+          // Report whether Chromium's real capture API is available. Permission
+          // decisions are handled by Electron's session handlers below.
           if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             console.debug('[MediaDevices] getUserMedia API available');
           }
@@ -1295,66 +1338,41 @@ app.whenReady().then(() => {
       (webContents && !webContents.isDestroyed() ? webContents.getURL() : '');
     logger.debug(`[Permission Request] ${permission} from ${requestingUrl || 'unknown'}`);
     logger.debug(`[Permission Request] Full details:`, JSON.stringify(details, null, 2));
-    // Allow camera, microphone, notifications, and other media permissions
-    // Note: "media" is a combined permission for camera + microphone
-    const allowedPermissions = [
-      'camera',
-      'microphone',
-      'media', // Combined permission for camera + microphone
-      'notifications',
-      'geolocation',
-      'midi',
-      'midiSysex',
-      'pointerLock',
-      'fullscreen',
-      'openExternal'
-    ];
+    const allowed = shouldGrantPermission(permission, requestingUrl, {
+      internalMediaCheck: isMediaCheckWebContents(webContents)
+    });
 
-    // Check if permission is allowed (case-insensitive)
-    const permissionLower = permission.toLowerCase();
-    const isAllowed = allowedPermissions.some(p => p.toLowerCase() === permissionLower);
-    // Only grant sensitive permissions to trusted Microsoft origins
-    const trusted = isTrustedOrigin(requestingUrl);
-
-    if (isAllowed && trusted) {
+    if (allowed) {
       logger.debug(`[Permission Request] GRANTED: ${permission}`);
-      callback(true); // Allow the permission
-    } else if (isAllowed && !trusted) {
-      logger.warning(`[Permission Request] DENIED: ${permission} from untrusted origin ${requestingUrl || 'unknown'}`);
-      callback(false); // Deny permissions requested by untrusted origins
+      callback(true);
     } else {
-      logger.debug(`[Permission Request] DENIED: ${permission} (not in allowed list: ${allowedPermissions.join(', ')})`);
-      callback(false); // Deny other permissions
+      logger.warning(`[Permission Request] DENIED: ${permission} from ${requestingUrl || 'unknown'}`);
+      callback(false);
     }
   });
 
   // Handle permission check - set up globally for all windows using defaultSession
   session.defaultSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => {
-    const allowedPermissions = [
-      'camera',
-      'microphone',
-      'media', // Combined permission for camera + microphone
-      'notifications',
-      'geolocation',
-      'midi',
-      'midiSysex',
-      'pointerLock',
-      'fullscreen'
-    ];
-
-    // Check if permission is allowed (case-insensitive) AND comes from a trusted origin
-    const permissionLower = permission.toLowerCase();
-    const allowed = allowedPermissions.some(p => p.toLowerCase() === permissionLower) &&
-      isTrustedOrigin(requestingOrigin);
+    const allowed = shouldGrantPermission(permission, requestingOrigin, {
+      internalMediaCheck: isMediaCheckWebContents(webContents)
+    });
     logger.debug(`[Permission Check] ${permission} from ${requestingOrigin} -> ${allowed ? 'ALLOWED' : 'DENIED'}`);
     return allowed;
   });
 
-  createWindow();
+  if (START_IN_MEDIA_CHECK) {
+    showMediaCheckDialog();
+  } else {
+    createWindow();
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      if (START_IN_MEDIA_CHECK) {
+        showMediaCheckDialog();
+      } else {
+        createWindow();
+      }
     }
   });
 });
@@ -1365,4 +1383,3 @@ app.on('window-all-closed', () => {
     app.quit();
   }
 });
-
