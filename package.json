@@ -1,6 +1,7 @@
 {
   "name": "windows-app-for-linux",
   "productName": "Windows App for Linux",
+  "desktopName": "io.github.joshschools.WindowsAppForLinux.desktop",
   "version": "1.0.2",
   "description": "Unofficial client for Windows App - Access Azure Virtual Desktops on Linux via Windows App web access",
   "main": "src/main.js",
@@ -34,6 +35,7 @@
       "output": "build/appimage"
     },
     "linux": {
+      "syncDesktopName": true,
       "target": [
         "AppImage"
       ],
@@ -42,8 +44,7 @@
     }
   },
   "devDependencies": {
-    "electron": "^31.0.0",
-    "electron-builder": "^24.9.1"
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
   }
 }
-
