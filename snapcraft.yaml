@@ -119,6 +119,7 @@ parts:
     organize:
       '*.js': electron-app/
       '*.json': electron-app/
+      '*.html': electron-app/
       '*.png': electron-app/
       '*.desktop': electron-app/
     override-build: |
