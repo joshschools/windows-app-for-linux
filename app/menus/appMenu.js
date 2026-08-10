@@ -75,7 +75,9 @@ function applyMenu() {
           accelerator: 'Alt+Left',
           click: () => {
             const win = BrowserWindow.getFocusedWindow();
-            if (win?.webContents.canGoBack()) win.webContents.goBack();
+            if (win?.webContents.navigationHistory.canGoBack()) {
+              win.webContents.navigationHistory.goBack();
+            }
           },
         },
         {
@@ -83,7 +85,9 @@ function applyMenu() {
           accelerator: 'Alt+Right',
           click: () => {
             const win = BrowserWindow.getFocusedWindow();
-            if (win?.webContents.canGoForward()) win.webContents.goForward();
+            if (win?.webContents.navigationHistory.canGoForward()) {
+              win.webContents.navigationHistory.goForward();
+            }
           },
         },
       ],
